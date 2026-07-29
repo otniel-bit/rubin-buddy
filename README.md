@@ -123,7 +123,7 @@ live** — no rebuild, no restart.
 
 He deals them from a **shuffled deck** rather than picking independently, so all
 250 play before any repeats. Independent picking gives a first repeat after
-roughly √(π/2 × 250) ≈ 20 draws — under two hours on the default timing — which
+roughly √(π/2 × 256) ≈ 20 draws — under two hours on the default timing — which
 would have wasted most of the 250.
 
 ### On the lines
