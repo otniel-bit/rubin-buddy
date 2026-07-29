@@ -93,6 +93,28 @@ you've customised what he says, your version stays and the new default is
 written alongside as `lines.txt.new`. It knows the difference by remembering the
 hash of whatever it shipped last time.
 
+### Two things the updater got wrong first, in case you build one
+
+**Never `cp` over a running executable.** The first version of the updater killed
+him every single time it worked — `SIGKILL`, `Code Signature Invalid`,
+`Taskgated Invalid Signature`. macOS validates code pages against the binary's
+signature (ad-hoc counts) as it faults them in, so changing the bytes underneath
+a live process invalidates pages it hasn't read yet. `install.sh` now writes to a
+temp name and `mv`s it into place: `rename()` only swaps the directory entry, so
+a running copy keeps its original inode and stays valid.
+
+**`raw.githubusercontent.com` caches for about five minutes.** Fine for a
+six-hourly poll, but it made a manual **Check for Updates** report the previous
+version right after a release, which looks broken. The version check uses the
+contents API with `Accept: application/vnd.github.raw` instead — uncached, and
+60 requests/hour unauthenticated is far more than this needs — falling back to
+raw if the API is unreachable.
+
+He also holds an advisory `flock` on `~/.rubin-buddy/.lock`, so a second launch
+prints `already running` and exits. Two of him would fight over the same state
+file and saved position. The kernel drops the lock on exit however the process
+goes, so unlike a pidfile a crash can't leave a stale one behind.
+
 ## What he says
 
 250 lines in `~/.rubin-buddy/lines.txt`, one per line, `#` for comments, grouped
@@ -161,9 +183,18 @@ auto-updating — the menu shows "dev build" and tells you to `git pull` instead
 To publish a change: bump `VERSION`, run `node build.js`, commit, push. Everyone
 picks it up within six hours.
 
-**Stop him before recompiling** (`pkill -x buddy`). Overwriting a running Mach-O
-in place can take the live process down, since the kernel pages the executable in
-from that file as it runs.
+**Stop him before recompiling** (`pkill -x buddy`) — `swiftc -o buddy` writes in
+place, and overwriting a live executable gets it killed for an invalid code
+signature. `install.sh` avoids this with an atomic rename; a bare `swiftc` does
+not. `pkill` also releases the single-instance lock.
+
+Useful while working on him:
+
+```bash
+./buddy --version
+./buddy --help
+RUBIN_DEBUG=1 RUBIN_UPDATE_DELAY=5 ./buddy    # log animation + update decisions
+```
 
 ## Layout
 
