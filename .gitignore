@@ -1,0 +1,7 @@
+# Built locally by install.sh / swiftc — never committed, so nobody ends up
+# running an unsigned binary they didn't compile.
+buddy
+
+.DS_Store
+*.tmp
+lines.txt.new

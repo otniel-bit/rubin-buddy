@@ -1,0 +1,314 @@
+# What the buddy says. One line per entry; blank lines and #comments ignored.
+# Edited live — he re-reads this file, so changes land without a rebuild.
+#
+# ── On these lines ──────────────────────────────────────────────────────────
+# ORIGINAL phrasings written for the character, not quotations from Rick Rubin,
+# The Creative Act, or any interview — this file presents whatever's in it as
+# the character's own unattributed speech, which is no place for someone else's
+# copyrighted text. They're written from his documented ideas instead; sources
+# are in the README.
+#
+# Keep additions SHORT. The bubble wraps at ~190pt, so anything past about 45
+# characters becomes two lines and starts to feel like a lecture.
+#
+# He deals these from a shuffled deck, so all of them play before any repeats.
+
+# ── Reduction ───────────────────────────────────────────────────────────────
+Reduce. Don't produce.
+Say it with less.
+Remove one more thing.
+Cut until it almost breaks.
+What survives if you halve it?
+If it works stripped, it works.
+The least that still lands.
+Simpler tends to outlive clever.
+Delete it and see what breaks.
+Less.
+Delete something.
+Make it smaller.
+Take one thing out. Listen again.
+What's load-bearing? Only that.
+Subtract before you add.
+The extra is hiding the good part.
+Two ideas fighting. Pick one.
+Nothing extra. Nothing missing.
+
+# ── Noticing ────────────────────────────────────────────────────────────────
+You're not inventing. You're noticing.
+What did you almost ignore?
+The answer is already in the room.
+Look again, slower.
+Notice what you notice.
+Awareness is most of the job.
+The clarity is there. Get quieter.
+What pulls your eye? Go there.
+What's been sitting there all along?
+You saw it. Trust that.
+The small thing is the thing.
+Look at what everyone walks past.
+
+# ── Taste over technique ────────────────────────────────────────────────────
+Know what you like. That's enough.
+Be decisive about what you like.
+Taste beats technique.
+Do you like it? That's the test.
+You already know.
+Skill is learnable. Taste is built.
+Do you like it, or approve of it?
+Your taste is the instrument.
+Liking it is reason enough.
+
+# ── Restraint ───────────────────────────────────────────────────────────────
+Leave fewer fingerprints.
+Do it no harm.
+State what you see, then let go.
+Don't convince. Just show.
+Nothing here is precious.
+The lightest touch that works.
+Don't win the argument. Make the thing.
+Suggest. Don't insist.
+Get out of its way.
+It doesn't need defending.
+
+# ── Stepping away ───────────────────────────────────────────────────────────
+Stepping away isn't quitting.
+Let the back of your mind have it.
+Sleep decides better than you do.
+Go for a walk. It'll keep.
+Don't fix it yet.
+Leave it unfinished tonight.
+Enough for today.
+Distraction can be the work.
+Come back as a stranger.
+Put it down before you force it.
+It'll solve itself in the shower.
+
+# ── Rules ───────────────────────────────────────────────────────────────────
+Whose rule is that?
+The convention is optional.
+You're allowed to break the form.
+The obvious choice is still a choice.
+Who told you that was required?
+The rule was someone's experiment.
+Best practice is just a habit.
+Do it wrong on purpose once.
+The form can bend.
+There's no committee.
+
+# ── Following the pull ──────────────────────────────────────────────────────
+Follow what excites you, not what's smart.
+Which part do you keep humming?
+Chase the part that thrills you.
+Follow the interesting thing.
+Trust the flinch of interest.
+Enthusiasm is data.
+Boredom is data too.
+Go where the energy is.
+What made you sit up?
+What you're avoiding is interesting.
+If it bores you, it'll bore them.
+Excitement first. Reasons after.
+
+# ── Abundance ───────────────────────────────────────────────────────────────
+Give the idea away. More arrive.
+Ideas aren't scarce.
+There's another one behind it.
+Spend the good idea now.
+Make more than you need.
+
+# ── Breaking the pattern ────────────────────────────────────────────────────
+Change one tool.
+Try it with the wrong instrument.
+Do it a way you don't know yet.
+Break your own pattern.
+Try it the other way.
+Start again, lighter.
+Change the room.
+Do it faster than is comfortable.
+Do it slower than is comfortable.
+Use the thing you're bad at.
+Constraints, not options.
+
+# ── Mistakes ────────────────────────────────────────────────────────────────
+Keep the mistake.
+The accident might be the point.
+That bug is interesting. Look at it.
+The wrong note taught you something.
+Don't clean that up yet.
+Failure is just information.
+The flaw is the character.
+Break it and see.
+The bad version teaches more.
+
+# ── Beginner's mind ─────────────────────────────────────────────────────────
+Not knowing is an advantage.
+Start like you've never done this.
+The first idea isn't the only one.
+Expertise has its own blind spots.
+Ask the stupid question.
+Forget how it's usually done.
+The newcomer sees it clearly.
+What would you try knowing nothing?
+Unlearn one thing.
+Come in without a plan.
+
+# ── Not for everyone ────────────────────────────────────────────────────────
+Better to divide than to bore.
+Pleasing everyone is a warning.
+Surprise them.
+No one is watching yet.
+For everyone means for no one.
+Some won't like it. Good.
+The safe version is the forgettable one.
+Don't sand off the strange part.
+Polarizing beats invisible.
+Let it be too much for someone.
+
+# ── Sitting with it ─────────────────────────────────────────────────────────
+Let it breathe.
+Slower.
+Sit with it.
+Uncertainty is part of it.
+You don't need the plan yet.
+Confusion comes before clarity.
+Doubt is fine. Keep going.
+The silence is part of it.
+It's allowed to be easy.
+Play first. Decide later.
+What's the feeling?
+What if it were simpler?
+Trust the boring version.
+Not yet isn't never.
+Stay in the question longer.
+Don't rush to resolve it.
+The middle always feels like this.
+Let it be bad for a while.
+
+# ── Yours ───────────────────────────────────────────────────────────────────
+Make the thing only you would make.
+Is this yours, or borrowed?
+Make it for you first.
+The audience comes last.
+Whose voice is that?
+No one else has your way in.
+Say it like you'd say it to a friend.
+Don't imitate. Absorb.
+Your limitation is your signature.
+I was here. Reason enough.
+
+# ── Doubt and comparison ────────────────────────────────────────────────────
+Someone's further along. Irrelevant.
+Comparison is a way of not working.
+Your first isn't their tenth.
+No process looks good from inside.
+The confident ones are guessing too.
+Don't audition for approval.
+Their path isn't the path.
+You're not behind. There's no schedule.
+Feeling out of your depth means growth.
+Eyes on your own page.
+
+# ── Finishing ───────────────────────────────────────────────────────────────
+Done is a decision, not a discovery.
+It'll never feel finished. Ship it.
+One more pass is usually fear.
+You can always make another.
+Stop when it stops improving.
+Release it before you hate it.
+Perfect is a way of not being seen.
+It's done when it says what it means.
+Let it go. Start the next one.
+Everything's a draft.
+
+# ── Practice ────────────────────────────────────────────────────────────────
+Show up before you feel like it.
+Small and daily beats big and rare.
+The habit works. The mood doesn't.
+Inspiration finds you working.
+Make it easy to start.
+Same time. Same place. No debate.
+Volume first. Quality follows.
+Make a hundred. Keep three.
+Consistency is the whole trick.
+Lower the bar to clear it.
+Begin badly. Begin anyway.
+
+# ── Listening ───────────────────────────────────────────────────────────────
+Listen without deciding.
+Hear it once without judging.
+What's it trying to be?
+Let it tell you what it needs.
+Listen for what isn't there.
+Turn it down to hear it better.
+Mind the space between things.
+Listen like it isn't yours.
+Hear the whole before the parts.
+What do you feel before you think?
+
+# ── Attention ───────────────────────────────────────────────────────────────
+Change where you sit.
+Protect the first hour.
+One thing at a time.
+Put the phone in another room.
+Boredom makes room for ideas.
+Guard your attention like a tool.
+Empty space invites something.
+Fewer inputs. Better output.
+
+# ── Working with others ─────────────────────────────────────────────────────
+Ask, don't tell.
+The best idea has no owner.
+Say what you see, not what to do.
+Let them be better than you expected.
+Argue with the work, not the person.
+Make it safe to be wrong out loud.
+Credit generously.
+
+# ── Where it comes from ─────────────────────────────────────────────────────
+You're a receiver, not a generator.
+It came through you, not from you.
+Stay tuned. Stay available.
+Ideas look for someone working.
+You didn't own it. You caught it.
+Be someone ideas visit.
+Keep the antenna up.
+It was already there. You showed up.
+Your job is to stay open.
+Take dictation.
+
+# ── Making before judging ───────────────────────────────────────────────────
+Make first. Judge later.
+Don't edit while you create.
+Those are two different jobs.
+The critic waits outside.
+Generate wide. Choose narrow.
+Turn the judgment off for an hour.
+Get it all out, then look.
+
+# ── Constraints ─────────────────────────────────────────────────────────────
+Fewer options. Better choices.
+Give yourself less to work with.
+A limit is a starting point.
+Take a tool away and see.
+One colour. One take. One hour.
+The box makes the idea.
+Too little time is a gift.
+
+# ── Trends ──────────────────────────────────────────────────────────────────
+Trends are borrowed conviction.
+By the time it's a trend, it's over.
+Don't chase. Notice.
+Make what's missing.
+The market isn't your muse.
+Timeless is a choice you make now.
+What would you do unpaid?
+
+# ── Beginnings and endings ──────────────────────────────────────────────────
+The first mark is hardest. Make it badly.
+Start in the middle.
+A blank page isn't empty. It's open.
+Beginnings are supposed to be awkward.
+Know when to stop looking.
+End sooner than feels right.
+Leave them wanting a little more.
+The exit matters as much as the entrance.

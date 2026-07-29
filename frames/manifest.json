@@ -1,0 +1,166 @@
+{
+  "width": 26,
+  "height": 34,
+  "animations": {
+    "idle": {
+      "next": null,
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "idle-0.png",
+          "hold": 16
+        },
+        {
+          "file": "idle-1.png",
+          "hold": 16
+        }
+      ]
+    },
+    "think": {
+      "next": null,
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "think-0.png",
+          "hold": 10
+        },
+        {
+          "file": "think-1.png",
+          "hold": 10
+        },
+        {
+          "file": "think-2.png",
+          "hold": 10
+        },
+        {
+          "file": "think-3.png",
+          "hold": 10
+        }
+      ]
+    },
+    "stroke": {
+      "next": null,
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "stroke-0.png",
+          "hold": 9
+        },
+        {
+          "file": "stroke-1.png",
+          "hold": 9
+        },
+        {
+          "file": "stroke-2.png",
+          "hold": 9
+        },
+        {
+          "file": "stroke-3.png",
+          "hold": 9
+        }
+      ]
+    },
+    "nod": {
+      "next": "idle",
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "nod-0.png",
+          "hold": 4
+        },
+        {
+          "file": "nod-1.png",
+          "hold": 4
+        },
+        {
+          "file": "nod-2.png",
+          "hold": 6
+        },
+        {
+          "file": "nod-3.png",
+          "hold": 4
+        }
+      ]
+    },
+    "glasses": {
+      "next": "look",
+      "shades": "up",
+      "transition": true,
+      "from": "down",
+      "frames": [
+        {
+          "file": "glasses-0.png",
+          "hold": 3
+        },
+        {
+          "file": "glasses-1.png",
+          "hold": 3
+        },
+        {
+          "file": "glasses-2.png",
+          "hold": 3
+        },
+        {
+          "file": "glasses-3.png",
+          "hold": 5
+        }
+      ]
+    },
+    "unglasses": {
+      "next": "idle",
+      "shades": "down",
+      "transition": true,
+      "from": "up",
+      "frames": [
+        {
+          "file": "unglasses-0.png",
+          "hold": 3
+        },
+        {
+          "file": "unglasses-1.png",
+          "hold": 3
+        },
+        {
+          "file": "unglasses-2.png",
+          "hold": 3
+        },
+        {
+          "file": "unglasses-3.png",
+          "hold": 4
+        }
+      ]
+    },
+    "look": {
+      "next": null,
+      "shades": "up",
+      "transition": false,
+      "from": "up",
+      "frames": [
+        {
+          "file": "look-0.png",
+          "hold": 40
+        },
+        {
+          "file": "look-1.png",
+          "hold": 40
+        },
+        {
+          "file": "look-2.png",
+          "hold": 3
+        },
+        {
+          "file": "look-3.png",
+          "hold": 20
+        }
+      ]
+    }
+  }
+}
