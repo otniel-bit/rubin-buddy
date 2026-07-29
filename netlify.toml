@@ -1,0 +1,11 @@
+# The landing page is a single static file with no build step. Netlify serves
+# site/ as the site root; nothing here touches the app itself.
+[build]
+  publish = "site"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "SAMEORIGIN"

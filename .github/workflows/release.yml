@@ -1,0 +1,71 @@
+name: Release
+
+# Installed copies only update when VERSION changes, so pushing app changes
+# without bumping it ships nothing. Rather than rely on remembering, this bumps
+# the patch version for you — and regenerates frames/ from sprite.js in the same
+# commit, so forgetting `node build.js` can't ship new code with stale art.
+#
+# Docs- and website-only pushes are deliberately not listed below: they'd
+# otherwise restart every user's buddy to deliver a typo fix.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Buddy.swift
+      - sprite.js
+      - build.js
+      - png.js
+      - frames/**
+      - lines.txt
+      - install.sh
+      - update.sh
+      - hooks.sh
+      - state.sh
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # The bump commit touches frames/ and VERSION, which would retrigger this
+    # workflow. Ignoring our own pushes is what stops it looping.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Rebuild frames from sprite.js
+        run: node build.js
+
+      - name: Bump patch version
+        run: |
+          set -eu
+          current="$(tr -d ' \n' < VERSION)"
+          major="${current%%.*}"
+          rest="${current#*.}"
+          minor="${rest%%.*}"
+          patch="${rest#*.}"
+          case "$major$minor$patch" in
+            ''|*[!0-9]*) echo "VERSION is not x.y.z: '$current'" >&2; exit 1 ;;
+          esac
+          printf '%s' "$major.$minor.$((patch + 1))" > VERSION
+          echo "Released $(cat VERSION) (was $current)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit
+        run: |
+          set -eu
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add VERSION frames preview.png
+          # Nothing to do if the frames were already current and only VERSION moved.
+          git diff --cached --quiet && exit 0
+          git commit -m "Release $(cat VERSION)"
+          git push

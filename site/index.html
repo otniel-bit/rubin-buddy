@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rick — an 8-bit buddy for your desktop</title>
+<meta name="description" content="A small 8-bit buddy who sits on your Mac while you work. One line to install.">
+<link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAASElEQVR42u3XwQkAIAxD0e6/dBxBxYhGfyD3dyilrSLzUafvAbTYXIDMBZALcA1xLuC/GdDmAgBwP4A9AICb0AU5fp7zGZGhNMK81jh5qw1CAAAAAElFTkSuQmCC">
+<meta property="og:title" content="Rick — an 8-bit buddy for your desktop">
+<meta property="og:description" content="He sits on your screen while you work. One line to install.">
+<style>
+  /* One committed look: cream paper, near-black ink. No dark-mode variant —
+     picking one and staying with it is the whole idea. */
+  :root {
+    --paper: #f4f1ea;
+    --ink: #17120f;
+    --faint: #8a8177;
+    --rule: #ddd7cb;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 19px/1.65 ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif;
+    padding: 12vh 24px 18vh;
+  }
+  main { max-width: 34rem; margin: 0 auto; }
+
+  /* He breathes: two frames, hard-swapped. steps(1) keeps it a cut, not a fade. */
+  .rick { position: relative; width: 104px; height: 136px; margin: 0 0 3.5rem; }
+  .rick img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    image-rendering: pixelated;
+  }
+  .rick img:last-child { animation: breathe 1.6s steps(1) infinite; }
+  @keyframes breathe { 0%, 50% { opacity: 0; } 50.01%, 100% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .rick img:last-child { animation: none; opacity: 0; }
+  }
+
+  h1 {
+    font-size: 2.1rem; line-height: 1.15; font-weight: 400;
+    margin: 0 0 1.2rem; letter-spacing: -0.01em;
+  }
+  h2 {
+    font-size: 1rem; font-weight: 400; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--faint);
+    margin: 4.5rem 0 1.1rem;
+  }
+  p { margin: 0 0 1.1rem; }
+  p.lead { font-size: 1.22rem; }
+  a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  .quiet { color: var(--faint); }
+  kbd {
+    font: inherit; font-size: 0.95em; border-bottom: 1px solid var(--rule);
+    padding-bottom: 1px;
+  }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 4.5rem 0 0; }
+
+  /* Command blocks. The command must survive being copied by hand, so it wraps
+     rather than scrolling out of sight. */
+  .cmd {
+    display: flex; align-items: flex-start; gap: 1rem;
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    padding: 1rem 0; margin: 0 0 1.1rem;
+  }
+  .cmd code {
+    flex: 1; min-width: 0;
+    font: 400 14px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    word-break: break-all; user-select: all;
+  }
+  .cmd button {
+    flex: none; appearance: none; background: none; border: 0; padding: 0;
+    color: var(--faint); cursor: pointer;
+    font: inherit; font-size: 0.85rem; letter-spacing: 0.06em;
+    text-transform: uppercase; text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .cmd button:hover, .cmd button:focus-visible { color: var(--ink); }
+  .cmd button[data-copied="1"] { color: var(--ink); text-decoration: none; }
+
+  ol { margin: 0 0 1.1rem; padding-left: 1.3rem; }
+  li { margin-bottom: 0.4rem; }
+  footer { margin-top: 4.5rem; font-size: 0.95rem; color: var(--faint); }
+  footer a { color: var(--faint); }
+</style>
+</head>
+<body>
+<main>
+
+  <div class="rick" aria-hidden="true">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAiCAYAAABBY8kOAAABDUlEQVR42t3XsQrCMBAG4O6KgotLwRcQHHwLJycfw/cp+CYuXR2cXH0ABzdBx2oDJ+eRu8vlWigWfoTmkq9pJWmLYkjH83E/SOkUmM+mTSxukAK3uoqGgtkIDPi6Hr/hQDPGIdysTtU+BLBsSEvvEABuaLfdNJPx6CftOe788KHPb4h2C6HOBOG/NgyAMXgeFMFQEhZDcC7nOoRrT56VBAEiYSpE1zXuirWo6x8A69UyJBeC/uzM/h9alKUZafsMG7JgUJ8NpWC4NhmCpSUXojuuCZIwWpcM0Y4SJtW6oDawzml1big1IoQXVS+g7ksShgfR2k1beS7kft2iENduhqSXeqm9s8+U3j9jPMcbcNoZSEAppJ0AAAAASUVORK5CYII=" alt="">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAiCAYAAABBY8kOAAABC0lEQVR42uXXsQrCQAwG4O6KgotLwRcQHHwLJycfw/cp+CYuXR2cXH0ABzdBx2oPIjFckkuuQlHhR+jl7vNUcm1R/OXrfrvupHQKTCfjJpZskAKXuoqGgm4EFnyc9+9woBnjEG5Xh2obApgb0vJ1CIBsaLNeNaPh4CPtNe56/6HXe4j2FUKdCcJ/bVgAY/B7UARDSVgMwTkd6xBuPHlXEgSIhKkQ7WvcJ9ai9j8Alot5iBeC+ezOfh+alaUZaef0G7JgUO+GUjBcmwxBa/FC9MQ1QRJG65IhOlHCpNosqA30Oa0uG0qNCOGmmguo55KE4UW0cdNR7oWyb7coxI2bIemmXhrv7DHF8xjzBBIlGUiR0mgtAAAAAElFTkSuQmCC" alt="">
+  </div>
+
+  <h1>Rick</h1>
+
+  <p class="lead">An 8-bit buddy who sits on your screen while you work.</p>
+  <p class="lead">He watches what Claude Code is doing. Now and then he says something.</p>
+
+  <h2>Install</h2>
+
+  <ol>
+    <li>Press <kbd>⌘ Space</kbd>, type <em>Terminal</em>, press <kbd>return</kbd>.</li>
+    <li>Paste the line below.</li>
+    <li>Press <kbd>return</kbd>.</li>
+  </ol>
+
+  <div class="cmd">
+    <code id="c1">curl -fsSL https://raw.githubusercontent.com/otniel-bit/rubin-buddy/main/install.sh | sh</code>
+    <button type="button" data-for="c1">Copy</button>
+  </div>
+
+  <p>It takes about a minute. He appears in the bottom-right corner.</p>
+
+  <h2>That's all</h2>
+
+  <p>Settings are in the menu bar — the small bald head. Size, how often he
+  speaks, and <em>Bring Him Back</em> if you ever lose him.</p>
+
+  <p>He keeps himself up to date.</p>
+
+  <h2>If it asks for the Xcode Command Line Tools</h2>
+
+  <p>Paste this instead, let it finish, then paste the install line again.</p>
+
+  <div class="cmd">
+    <code id="c2">xcode-select --install</code>
+    <button type="button" data-for="c2">Copy</button>
+  </div>
+
+  <h2>To make him follow Claude Code</h2>
+
+  <div class="cmd">
+    <code id="c3">~/.rubin-buddy/hooks.sh</code>
+    <button type="button" data-for="c3">Copy</button>
+  </div>
+
+  <p>He thinks while it thinks, works while it works, and nods when it's done.</p>
+
+  <hr>
+
+  <footer>
+    <p>macOS. Nothing runs as administrator; everything lives in one folder you
+    can delete. Built from source on your own machine, so there's nothing
+    unsigned to talk your way past.</p>
+    <p><a href="https://github.com/otniel-bit/rubin-buddy">Source</a> · Rick-Rubin-inspired homage. Not affiliated with him.</p>
+  </footer>
+
+</main>
+
+<script>
+  for (const button of document.querySelectorAll('.cmd button')) {
+    button.addEventListener('click', async () => {
+      const text = document.getElementById(button.dataset.for).textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        // Clipboard API needs a secure context and permission; selecting the
+        // text at least leaves ⌘C one keystroke away.
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById(button.dataset.for));
+        const sel = getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        button.textContent = 'Press ⌘C';
+        return;
+      }
+      button.textContent = 'Copied';
+      button.dataset.copied = '1';
+      setTimeout(() => {
+        button.textContent = 'Copy';
+        delete button.dataset.copied;
+      }, 2000);
+    });
+  }
+</script>
+</body>
+</html>
