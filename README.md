@@ -36,14 +36,16 @@ nothing needs `sudo`.
 
 ### Make him follow Claude Code
 
-Optional, and the best part:
+The installer asks — say yes. Already installed? Click the menu bar head →
+**Follow Claude Code**. Either way it's the same thing underneath:
 
 ```bash
 ~/.rubin-buddy/hooks.sh
 ```
 
 That merges six hooks into `~/.claude/settings.json`, keeping whatever's already
-in there. Open a new Claude Code session and he'll start reacting:
+in there. Declining at install is remembered, so updates never nag. Open a new
+Claude Code session and he'll start reacting:
 
 | Claude Code event | What he does |
 | --- | --- |
@@ -66,6 +68,7 @@ The bald silhouette with the shades. Everything lives there:
 | Chatter | Silent · Quiet (5–15 min) · Normal (2.5–7 min) · Talkative (45 s–2 min) |
 | Pose | Play any animation directly |
 | Say Something | A line on demand |
+| Follow Claude Code | Wires / unwires the hooks — same merge as `hooks.sh` |
 | Start at Login | Writes / removes the launchd agent |
 | Check for Updates · Auto-Update | See below |
 | Quit Rick | |
@@ -125,6 +128,23 @@ He deals them from a **shuffled deck** rather than picking independently, so all
 256 play before any repeats. Independent picking gives a first repeat after
 roughly √(π/2 × 256) ≈ 20 draws — under two hours on the default timing — which
 would have wasted most of them.
+
+### He speaks to the moment
+
+The theme headers in `lines.txt` aren't just organization — the moment picks the
+theme:
+
+| Moment | Theme he draws from |
+| --- | --- |
+| A turn finishes (sometimes, 1 in 3) | *Finishing* — "It'll never feel finished. Ship it." |
+| Claude has been waiting on you 3+ minutes | *Noticing* / *Taste* — you're the decision now |
+| Two hours of unbroken work | *Stepping away* — "Go for a walk. It'll keep." |
+
+Contextual lines share a 15-minute cooldown so he never gets chatty about it,
+respect Silent mode, and fall back to the whole deck if you rename the groups.
+Renaming or reordering groups in `lines.txt` is safe; the parser reads whatever
+headers are there. (`RUBIN_CTX_FAST=1` compresses all the timings to seconds for
+testing.)
 
 ### On the lines
 

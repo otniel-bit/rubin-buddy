@@ -152,7 +152,9 @@ if launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null; then
         k=$((k + 1))
     done
 else
-    ( nohup "$DEST/buddy" >/dev/null 2>&1 & )
+    # </dev/null matters: without it the background buddy inherits the
+    # terminal's stdin and keeps the pty open after the installer exits.
+    ( nohup "$DEST/buddy" </dev/null >/dev/null 2>&1 & )
     sleep 1
 fi
 if pgrep -x buddy >/dev/null 2>&1; then
@@ -161,14 +163,34 @@ else
     printf '\n  Installed %s, but he did not start. Try: %s/buddy\n' "$VERSION" "$DEST"
 fi
 
+# --- Claude Code ------------------------------------------------------------
+# Offer the connection right here, once. This runs under `curl | sh`, where
+# stdin is the script itself — so the answer must come from /dev/tty. No
+# controlling terminal (auto-updates run headless) means no prompt: skip
+# silently; the "Follow Claude Code" toggle in the menu bar covers it later.
+# Declining is remembered so updates never nag.
+if [ -d "$HOME/.claude" ] && [ ! -f "$DEST/.hooks-declined" ] \
+    && ! grep -qs "rubin-buddy" "$HOME/.claude/settings.json"; then
+    if { : < /dev/tty; } 2>/dev/null; then
+        printf '\n  Make Rick follow Claude Code — think, work, nod along with it? [Y/n] ' > /dev/tty
+        IFS= read -r answer < /dev/tty || answer=""
+        case "$answer" in
+            [Nn]*)
+                touch "$DEST/.hooks-declined"
+                say 'Okay. Menu bar -> "Follow Claude Code" if you change your mind.'
+                ;;
+            *)
+                sh "$DEST/hooks.sh"
+                ;;
+        esac
+    fi
+fi
+
 cat <<'NEXTEOF'
 
-  Look for the bald silhouette in your menu bar for settings —
-  size, chattiness, "Bring Him Back" if you ever lose him.
-
-  To make him react to Claude Code (thinking, working, nodding):
-
-    ~/.rubin-buddy/hooks.sh
+  Settings live in the menu bar — the small bald silhouette. Size,
+  chattiness, "Follow Claude Code", and "Bring Him Back" if you
+  ever lose him.
 
   He updates himself when a new version lands. Turn that off in the
   menu bar under Auto-Update.

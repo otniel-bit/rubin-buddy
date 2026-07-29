@@ -502,6 +502,15 @@ final class Buddy: NSObject, NSMenuDelegate {
     private var lineBag: [String] = []
     private var bagSource: [String] = []
 
+    // Contextual speech: the moment picks the theme, the theme picks the line.
+    private var lastContextual = Date.distantPast
+    /// Start of the current unbroken stretch of Claude Code activity.
+    private var activeSince = Date()
+    private var lastStateEvent = Date()
+    /// Set while he's in the shades-up "your turn" state.
+    private var waitingSince: Date?
+    private var saidWaitingLine = false
+
     private let localVersion: String
     /// True when running from the installed location, where update.sh applies.
     /// A developer checkout updates with git, not by being overwritten.
@@ -521,6 +530,17 @@ final class Buddy: NSObject, NSMenuDelegate {
     static var quietSecondsRange: ClosedRange<Int>? = 150...420
     /// RUBIN_DEBUG=1 logs every animation change to stderr.
     static var debug = false
+
+    // Contextual-speech timing. Vars, not lets, so RUBIN_CTX_FAST can shrink
+    // them for testing — the triggers are otherwise hours apart by design.
+    /// Minimum gap between contextual lines, shared across all three triggers.
+    static var ctxCooldown: TimeInterval = 15 * 60
+    /// How long Claude must be waiting on you before he says something.
+    static var ctxWait: TimeInterval = 3 * 60
+    /// Unbroken activity before he suggests stepping away.
+    static var ctxStretch: TimeInterval = 2 * 60 * 60
+    /// A pause longer than this ends the stretch.
+    static var ctxGap: TimeInterval = 15 * 60
 
     private static let sizeChoices: [(String, Double)] = [
         ("Tiny", 2.0), ("Small", 2.5), ("Medium", 3.5), ("Large", 5.0),
@@ -773,6 +793,16 @@ final class Buddy: NSObject, NSMenuDelegate {
             }
         }
 
+        // Claude has been waiting on you a while: shades up, and after ctxWait
+        // he says so — you're the decision now. Once per wait.
+        if let since = waitingSince, !saidWaitingLine {
+            let now = Date()
+            if now.timeIntervalSince(since) >= Self.ctxWait, canSpeakContextual(now) {
+                saidWaitingLine = true
+                speakContextual(["noticing", "taste over technique"], at: now)
+            }
+        }
+
         guard let animation, !animation.frames.isEmpty else { return }
         ticksOnFrame += 1
         guard ticksOnFrame >= max(1, animation.frames[frameIndex].hold) else { return }
@@ -812,11 +842,37 @@ final class Buddy: NSObject, NSMenuDelegate {
 
         guard let raw = try? String(contentsOf: stateFile, encoding: .utf8) else { return }
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, sprites.animations[name] != nil else { return }
+        noteStateEvent(name)
         // Re-triggering what's already playing would just make it stutter.
-        guard !name.isEmpty, name != currentAnimation, sprites.animations[name] != nil else {
-            return
-        }
+        guard name != currentAnimation else { return }
         request(name)
+    }
+
+    /// Contextual bookkeeping, run on every state-file event (even repeats).
+    private func noteStateEvent(_ name: String) {
+        let now = Date()
+        if now.timeIntervalSince(lastStateEvent) > Self.ctxGap { activeSince = now }
+        lastStateEvent = now
+
+        if name == "glasses" || name == "look" {
+            if waitingSince == nil {
+                waitingSince = now
+                saidWaitingLine = false
+            }
+        } else {
+            waitingSince = nil
+        }
+
+        // A finished turn sometimes earns a Finishing line — but only sometimes,
+        // and never twice inside the cooldown. Every Claude turn ends with a
+        // Stop, and a buddy that comments on all of them stops being listened to.
+        if name == "nod", canSpeakContextual(now), Int.random(in: 0..<3) == 0 {
+            speakContextual(["finishing"], at: now)
+        } else if now.timeIntervalSince(activeSince) >= Self.ctxStretch, canSpeakContextual(now) {
+            speakContextual(["stepping away"], at: now)
+            activeSince = now  // the two-hour clock restarts after he says it
+        }
     }
 
     // MARK: speech
@@ -847,6 +903,49 @@ final class Buddy: NSObject, NSMenuDelegate {
         }
         guard let line = lineBag.popLast() else { return }
         bubble.show(line, over: window.frame, pixel: pixel, screen: window.screen)
+    }
+
+    /// lines.txt grouped by its `# ── Theme ──` headers, keyed lowercase.
+    /// Re-parsed on use, same as lines(), so edits land live.
+    private func lineGroups() -> [String: [String]] {
+        guard let raw = try? String(contentsOf: linesFile, encoding: .utf8) else { return [:] }
+        var groups: [String: [String]] = [:]
+        var current = ""
+        for rawLine in raw.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#") {
+                if line.contains("──") {
+                    let name = line
+                        .replacingOccurrences(of: "#", with: "")
+                        .replacingOccurrences(of: "─", with: "")
+                        .trimmingCharacters(in: .whitespaces)
+                    if !name.isEmpty { current = name.lowercased() }
+                }
+                continue
+            }
+            if !line.isEmpty { groups[current, default: []].append(line) }
+        }
+        return groups
+    }
+
+    private func canSpeakContextual(_ now: Date) -> Bool {
+        Buddy.quietSecondsRange != nil && window.isVisible && !bubble.isVisible
+            && now.timeIntervalSince(lastContextual) >= Self.ctxCooldown
+    }
+
+    /// A line from the named theme groups — the moment picks the theme. Falls
+    /// back to the whole deck if the groups aren't in the file any more.
+    private func speakContextual(_ groupNames: [String], at now: Date) {
+        let groups = lineGroups()
+        let pool = groupNames.flatMap { groups[$0] ?? [] }
+        guard let line = (pool.isEmpty ? lines() : pool).randomElement() else { return }
+        if Buddy.debug {
+            FileHandle.standardError.write("ctx \(groupNames): \(line)\n".data(using: .utf8)!)
+        }
+        bubble.show(line, over: window.frame, pixel: pixel, screen: window.screen)
+        lastContextual = now
+        // He just spoke; push the random line back out so they don't stack.
+        scheduleNextLine()
     }
 
     // MARK: updates
@@ -973,6 +1072,8 @@ final class Buddy: NSObject, NSMenuDelegate {
 
         menu.addItem(item("Say Something", #selector(saySomething)))
         menu.addItem(.separator())
+        menu.addItem(
+            item("Follow Claude Code", #selector(toggleFollowClaude), on: hooksWired))
         menu.addItem(item("Start at Login", #selector(toggleLoginItem), on: LoginItem.isEnabled))
 
         let versionLabel = NSMenuItem(
@@ -1042,6 +1143,51 @@ final class Buddy: NSObject, NSMenuDelegate {
         window.orderFrontRegardless()
         speakLine()
         scheduleNextLine()
+    }
+
+    // MARK: Claude Code hooks
+
+    private var claudeSettingsURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/settings.json")
+    }
+
+    /// The hooks script tags every entry it writes with "rubin-buddy", which is
+    /// also how it recognises its own entries to remove — so presence of the
+    /// marker is exactly "wired".
+    private var hooksWired: Bool {
+        (try? String(contentsOf: claudeSettingsURL, encoding: .utf8))?
+            .contains("rubin-buddy") ?? false
+    }
+
+    /// One click instead of a trip to the terminal. Shells out to the same
+    /// hooks.sh the terminal path uses, so there is exactly one implementation
+    /// of the settings merge.
+    @objc private func toggleFollowClaude() {
+        let script = Bundle.main.bundleURL.appendingPathComponent("hooks.sh").path
+        guard FileManager.default.fileExists(atPath: script) else {
+            say("Can't find hooks.sh. Reinstall me.")
+            return
+        }
+        let wasWired = hooksWired
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = wasWired ? [script, "--remove"] : [script]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            say("Couldn't run it. Try ~/.rubin-buddy/hooks.sh")
+            return
+        }
+        // Believe the file, not the exit code.
+        switch (wasWired, hooksWired) {
+        case (false, true): say("Following. Open a fresh session.")
+        case (true, false): say("Not following.")
+        default: say("That didn't take. Try ~/.rubin-buddy/hooks.sh")
+        }
     }
 
     @objc private func toggleLoginItem() {
@@ -1116,6 +1262,15 @@ let linesFile: URL = {
 }()
 
 Buddy.debug = env["RUBIN_DEBUG"] == "1"
+
+// Testing only: contextual triggers are minutes-to-hours apart by design, which
+// makes them unverifiable in a sitting. This compresses them to seconds.
+if env["RUBIN_CTX_FAST"] == "1" {
+    Buddy.ctxCooldown = 12
+    Buddy.ctxWait = 8
+    Buddy.ctxStretch = 40
+    Buddy.ctxGap = 20
+}
 
 if let spec = env["RUBIN_CHATTER"] {
     let parts = spec.split(separator: "-").compactMap { Int($0) }
