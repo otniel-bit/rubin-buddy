@@ -59,18 +59,27 @@ VERSION="$(tr -d ' \n' < "$SRC/VERSION")"
 say "Building $VERSION (this takes a few seconds)..."
 ( cd "$SRC" && swiftc -O Buddy.swift -o buddy ) || die "Build failed."
 
-# Only stop the running copy once we know we have a working replacement.
-pkill -x buddy 2>/dev/null || true
-
 # --- install ----------------------------------------------------------------
+#
+# Everything goes in by atomic rename, never written over in place. Copying onto
+# a *running* executable gets that process killed with SIGKILL "Code Signature
+# Invalid": the kernel checks code pages against the binary's signature as it
+# pages them in, and the bytes changed underneath it. rename() only swaps the
+# directory entry, so a running copy keeps its original inode and stays valid.
 
 mkdir -p "$DEST"
+
+rm -rf "$DEST/.frames.new"
+cp -R "$SRC/frames" "$DEST/.frames.new"
 rm -rf "$DEST/frames"
-cp -R "$SRC/frames" "$DEST/frames"
+mv "$DEST/.frames.new" "$DEST/frames"
+
 for f in buddy state.sh update.sh hooks.sh VERSION; do
-    [ -e "$SRC/$f" ] && cp "$SRC/$f" "$DEST/$f"
+    [ -e "$SRC/$f" ] || continue
+    cp "$SRC/$f" "$DEST/.$f.new"
+    case "$f" in *.sh|buddy) chmod +x "$DEST/.$f.new" ;; esac
+    mv -f "$DEST/.$f.new" "$DEST/$f"
 done
-chmod +x "$DEST/buddy" "$DEST"/*.sh 2>/dev/null || true
 
 # lines.txt is meant to be edited, so don't clobber a customised one. We can
 # tell the difference by remembering the hash of whatever we shipped last time.
@@ -111,12 +120,31 @@ cat > "$PLIST" <<PLISTEOF
 PLISTEOF
 
 DOMAIN="gui/$(id -u)"
+
+# Stop the old copy now that the new files are safely in place, and actually
+# wait for it to go. pkill returns as soon as the signal is sent, so bootstrapping
+# straight away can leave two of him on screen.
+pkill -x buddy 2>/dev/null || true
+i=0
+while pgrep -x buddy >/dev/null 2>&1 && [ "$i" -lt 25 ]; do
+    sleep 0.2
+    i=$((i + 1))
+done
+pkill -9 -x buddy 2>/dev/null || true
+
 launchctl enable "$DOMAIN/$LABEL" 2>/dev/null || true
 if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
     launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+    # bootout is asynchronous; bootstrapping too early fails with EINPROGRESS.
+    j=0
+    while launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 && [ "$j" -lt 25 ]; do
+        sleep 0.2
+        j=$((j + 1))
+    done
 fi
-launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null ||
-    ( nohup "$DEST/buddy" >/dev/null 2>&1 & )
+launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null || true
+sleep 1
+pgrep -x buddy >/dev/null 2>&1 || ( nohup "$DEST/buddy" >/dev/null 2>&1 & )
 
 sleep 1
 if pgrep -x buddy >/dev/null 2>&1; then

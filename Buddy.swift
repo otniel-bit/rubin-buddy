@@ -553,9 +553,12 @@ final class Buddy: NSObject, NSMenuDelegate {
             [weak self] _ in self?.tick()
         }
 
+        log("bundle=\(Bundle.main.bundleURL.path) managed=\(isManagedInstall) v=\(localVersion)")
         if isManagedInstall {
             // Not at the instant of launch — logging in is busy enough already.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 45) { [weak self] in
+            let delay =
+                Double(ProcessInfo.processInfo.environment["RUBIN_UPDATE_DELAY"] ?? "") ?? 45
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 self?.checkForUpdates(userAsked: false)
             }
             updateTimer = Timer.scheduledTimer(
@@ -797,10 +800,22 @@ final class Buddy: NSObject, NSMenuDelegate {
         UserDefaults.standard.object(forKey: Self.autoUpdateKey) as? Bool ?? true
     }
 
+    private func log(_ message: String) {
+        guard Buddy.debug else { return }
+        FileHandle.standardError.write("\(message)\n".data(using: .utf8)!)
+    }
+
     private func checkForUpdates(userAsked: Bool) {
-        guard userAsked || (autoUpdateEnabled && isManagedInstall) else { return }
+        log(
+            "update check: asked=\(userAsked) auto=\(autoUpdateEnabled) "
+                + "managed=\(isManagedInstall) local=\(localVersion)")
+        guard userAsked || (autoUpdateEnabled && isManagedInstall) else {
+            log("update check: skipped")
+            return
+        }
         Updater.fetchLatest { [weak self] remote in
             guard let self else { return }
+            self.log("update check: remote=\(remote ?? "nil")")
             guard let remote else {
                 if userAsked { self.say("Couldn't reach the update server.") }
                 return
@@ -995,14 +1010,45 @@ let env = ProcessInfo.processInfo.environment
 let home = FileManager.default.homeDirectoryForCurrentUser
 let here = Bundle.main.bundleURL
 
+let version =
+    (try? String(contentsOf: here.appendingPathComponent("VERSION"), encoding: .utf8))?
+    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "0.0.0"
+
+if args.contains("--version") || args.contains("-v") {
+    print("rubin-buddy \(version)")
+    exit(0)
+}
+if args.contains("--help") || args.contains("-h") {
+    print(
+        """
+        rubin-buddy \(version) — an 8-bit desktop buddy.
+
+          buddy [framesDir] [scale]
+
+          --version   print the version
+          --help      this
+
+        Environment: RUBIN_SCALE, RUBIN_CHATTER (e.g. 150-420), RUBIN_LINES,
+        RUBIN_STATE, RUBIN_FRAMES, RUBIN_DEBUG=1, RUBIN_UPDATE_DELAY.
+
+        Settings live in the menu bar. https://github.com/otniel-bit/rubin-buddy
+        """)
+    exit(0)
+}
+
+// Flags are handled above; anything left that starts with '-' isn't a path, and
+// treating it as one produced a baffling "manifest.json not found" error.
+let positional = args.filter { !$0.hasPrefix("-") }
+
 let framesDir: URL = {
-    if let arg = args.first { return URL(fileURLWithPath: arg) }
+    if let arg = positional.first { return URL(fileURLWithPath: arg) }
     if let fromEnv = env["RUBIN_FRAMES"] { return URL(fileURLWithPath: fromEnv) }
     return here.appendingPathComponent("frames")
 }()
 
 // 2.5 lands on exactly 5 device pixels per sprite pixel on a 2x display.
-let scale = max(1.0, Double(args.count > 1 ? args[1] : env["RUBIN_SCALE"] ?? "") ?? 2.5)
+let scale = max(
+    1.0, Double(positional.count > 1 ? positional[1] : env["RUBIN_SCALE"] ?? "") ?? 2.5)
 
 let stateFile: URL = {
     if let fromEnv = env["RUBIN_STATE"] { return URL(fileURLWithPath: fromEnv) }
