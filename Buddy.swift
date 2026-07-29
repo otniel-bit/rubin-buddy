@@ -11,9 +11,32 @@
 // Run:    ./buddy [framesDir] [scale]
 
 import AppKit
+import Darwin
 
 let PAPER = NSColor(srgbRed: 0.965, green: 0.953, blue: 0.925, alpha: 1)  // beard white
 let INK = NSColor(srgbRed: 0.090, green: 0.071, blue: 0.059, alpha: 1)  // outline
+
+// MARK: - Single instance
+
+/// Held for the process lifetime; the flock releases when we exit, however we go.
+var instanceLockDescriptor: Int32 = -1
+
+/// Two of him on screen is confusing, and both copies would fight over the same
+/// state file and saved position. Cheaper to refuse than to coordinate: an
+/// advisory flock that the kernel drops for us on exit, so a crash can't leave a
+/// stale lock behind the way a pidfile would.
+func acquireInstanceLock(at directory: URL) -> Bool {
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let path = directory.appendingPathComponent(".lock").path
+    let fd = open(path, O_CREAT | O_RDWR, 0o644)
+    guard fd >= 0 else { return true }  // can't lock: better to run than not to
+    if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+        close(fd)
+        return false
+    }
+    instanceLockDescriptor = fd
+    return true
+}
 
 // MARK: - Geometry
 
@@ -1099,6 +1122,11 @@ if let spec = env["RUBIN_CHATTER"] {
     if parts.count == 2, parts[0] > 0, parts[1] >= parts[0] {
         Buddy.quietSecondsRange = parts[0]...parts[1]
     }
+}
+
+guard acquireInstanceLock(at: stateFile.deletingLastPathComponent()) else {
+    FileHandle.standardError.write("buddy: already running\n".data(using: .utf8)!)
+    exit(0)
 }
 
 let sprites: SpriteSet

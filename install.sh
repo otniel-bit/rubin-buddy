@@ -142,11 +142,19 @@ if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
         j=$((j + 1))
     done
 fi
-launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null || true
-sleep 1
-pgrep -x buddy >/dev/null 2>&1 || ( nohup "$DEST/buddy" >/dev/null 2>&1 & )
-
-sleep 1
+# Only start him ourselves if launchd declined the job. Checking "is he running
+# yet?" after a fixed sleep raced with launchd still bringing him up, and started
+# a second copy.
+if launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null; then
+    k=0
+    while ! pgrep -x buddy >/dev/null 2>&1 && [ "$k" -lt 40 ]; do
+        sleep 0.2
+        k=$((k + 1))
+    done
+else
+    ( nohup "$DEST/buddy" >/dev/null 2>&1 & )
+    sleep 1
+fi
 if pgrep -x buddy >/dev/null 2>&1; then
     printf '\n  Rick %s is on your screen, bottom-right.\n' "$VERSION"
 else
