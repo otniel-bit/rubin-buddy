@@ -38,7 +38,16 @@ enum Updater {
     static let repo = "otniel-bit/rubin-buddy"
     static let branch = "main"
 
+    /// The contents API, not raw.githubusercontent.com. Raw serves a cached copy
+    /// for about five minutes — irrelevant for the periodic check, but it makes a
+    /// manual "Check for Updates" report the old version right after a release.
+    /// The API is uncached; 60 requests/hour unauthenticated is far more than a
+    /// six-hourly poll needs.
     static var versionURL: URL {
+        URL(string: "https://api.github.com/repos/\(repo)/contents/VERSION?ref=\(branch)")!
+    }
+    /// Falls back here if the API is unreachable or rate-limited.
+    static var versionFallbackURL: URL {
         URL(string: "https://raw.githubusercontent.com/\(repo)/\(branch)/VERSION")!
     }
     static var installerURL: URL {
@@ -60,15 +69,38 @@ enum Updater {
         return false
     }
 
-    static func fetchLatest(_ done: @escaping (String?) -> Void) {
-        var request = URLRequest(url: versionURL)
+    private static func fetch(_ url: URL, api: Bool, _ done: @escaping (String?) -> Void) {
+        var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 15
-        URLSession.shared.dataTask(with: request) { data, _, _ in
-            let version = data.flatMap { String(data: $0, encoding: .utf8) }?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            DispatchQueue.main.async { done(version?.isEmpty == false ? version : nil) }
+        if api {
+            // Hands back the file's bytes instead of JSON with base64 in it.
+            request.setValue("application/vnd.github.raw", forHTTPHeaderField: "Accept")
+        }
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard code == 200,
+                let text = data.flatMap({ String(data: $0, encoding: .utf8) })?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                !text.isEmpty, text.first?.isNumber == true
+            else {
+                done(nil)
+                return
+            }
+            done(text)
         }.resume()
+    }
+
+    static func fetchLatest(_ done: @escaping (String?) -> Void) {
+        fetch(versionURL, api: true) { viaAPI in
+            if let viaAPI {
+                DispatchQueue.main.async { done(viaAPI) }
+                return
+            }
+            fetch(versionFallbackURL, api: false) { viaRaw in
+                DispatchQueue.main.async { done(viaRaw) }
+            }
+        }
     }
 
     /// Runs the installer detached. It stops the old copy and starts the new
