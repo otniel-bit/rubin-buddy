@@ -117,14 +117,14 @@ goes, so unlike a pidfile a crash can't leave a stale one behind.
 
 ## What he says
 
-250 lines in `~/.rubin-buddy/lines.txt`, one per line, `#` for comments, grouped
+256 lines in `~/.rubin-buddy/lines.txt`, one per line, `#` for comments, grouped
 into 24 themes. He re-reads the file every time he speaks, so **edits land
 live** — no rebuild, no restart.
 
 He deals them from a **shuffled deck** rather than picking independently, so all
-250 play before any repeats. Independent picking gives a first repeat after
+256 play before any repeats. Independent picking gives a first repeat after
 roughly √(π/2 × 256) ≈ 20 draws — under two hours on the default timing — which
-would have wasted most of the 250.
+would have wasted most of them.
 
 ### On the lines
 
@@ -180,8 +180,28 @@ Node.
 
 Running from a checkout, he detects he isn't the managed install and skips
 auto-updating — the menu shows "dev build" and tells you to `git pull` instead.
-To publish a change: bump `VERSION`, run `node build.js`, commit, push. Everyone
-picks it up within six hours.
+
+### Shipping a change to everyone
+
+**Commit and push. That's the whole process.**
+
+The `Release` workflow does the rest: it regenerates `frames/` from `sprite.js`,
+bumps the patch `VERSION`, and commits both. Installed copies notice within six
+hours and reinstall themselves. Two details make it safe:
+
+- It only runs for pushes that touch the app — `Buddy.swift`, `sprite.js`,
+  `frames/`, `lines.txt`, the shell scripts. A README or `site/` change deploys
+  the website but doesn't restart anyone's buddy to deliver a typo fix.
+- It ignores its own pushes (`github.actor != 'github-actions[bot]'`), which is
+  what stops the release commit triggering another release forever.
+
+So `VERSION` is not something to edit by hand. If you do bump it manually, CI
+will bump it again on top — harmless, just a wasted release.
+
+The landing page at [rick-buddy.netlify.app](https://rick-buddy.netlify.app) is
+`site/index.html`, deployed by Netlify on every push to `main`. It's one
+self-contained file: the sprite is inlined as base64 and there are no external
+requests.
 
 **Stop him before recompiling** (`pkill -x buddy`) — `swiftc -o buddy` writes in
 place, and overwriting a live executable gets it killed for an invalid code
