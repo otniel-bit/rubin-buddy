@@ -7,3 +7,5 @@ buddy
 lines.txt.new
 # press/make.js intermediates (deleted on success, stranded on failure)
 press/*.html
+# written beside the script by hooks.sh --remove; state, not source
+.hooks-declined
