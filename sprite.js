@@ -212,6 +212,32 @@ const SHADES_ON = headRows({ glassesY: 7, eyes: 'none' });
 const standing = buildRows(SHADES_ON, BODY_ARMS_DOWN, 'standing');
 const handsOnBeard = buildRows(SHADES_ON, BODY_HANDS_UP, 'handsOnBeard');
 
+// Sitting cross-legged, hands on knees, beard pooling into the lap. The head
+// is the standing head, dropped so he reads as grounded rather than shrunk;
+// shades stay on — they always stay on.
+const sitting = (() => {
+  const wide = (interior) => _(1) + 'k' + interior + 'k' + _(1); // 20px interior
+  const rows = [
+    ...Array(8).fill(_(W)),                 // 0-7
+    ...SHADES_ON.slice(1),                  // 8-20: skull through beard top
+    /* 21 */ body(c('n', 2) + c('w', 14) + c('n', 2)),
+    /* 22 */ body(c('n', 2) + c('w', 14) + c('n', 2)),
+    /* 23 */ body('n' + c('b', 2) + c('w', 12) + c('b', 2) + 'n'),
+    /* 24 */ wide(c('n', 2) + c('s', 2) + c('w', 12) + c('s', 2) + c('n', 2)),
+    /* 25 */ wide(c('b', 3) + c('s', 2) + c('w', 10) + c('s', 2) + c('b', 3)),
+    /* 26 */ wide(c('b', 6) + c('w', 3) + c('g', 2) + c('w', 3) + c('b', 6)),
+    /* 27 */ wide(c('b', 20)),
+    /* 28 */ wide(c('b', 6) + c('s', 3) + c('b', 2) + c('s', 3) + c('b', 6)),
+    /* 29 */ _(2) + c('k', 20) + _(2),
+    ...Array(2).fill(_(W)),                 // 30-31
+  ];
+  if (rows.length !== H) throw new Error(`sitting: ${rows.length} rows`);
+  rows.forEach((row, y) => {
+    if (row.length !== W) throw new Error(`sitting row ${y}: width ${row.length}`);
+  });
+  return rows;
+})();
+
 const wearing = (glassesY, eyes) =>
   buildRows(headRows({ glassesY, eyes }), BODY_ARMS_DOWN, `shades@${glassesY}`);
 
@@ -308,6 +334,37 @@ const ANIMATIONS = {
       { rows: wearing(5, 'open'), hold: 3 },
       { rows: wearing(6, 'closed'), hold: 3 },
       { rows: wearing(7, 'none'), hold: 4 },
+    ],
+  },
+
+  // Settling down to sit. Quick — the sitting is the point, not the descent.
+  sitdown: {
+    next: 'meditate',
+    shades: 'down',
+    frames: [
+      { rows: breathe(standing), hold: 5 },
+      { rows: sitting, hold: 5 },
+    ],
+  },
+
+  // His own practice. Cross-legged, slower breath than idle — meditation
+  // should read as deeper stillness, not a seated version of waiting.
+  meditate: {
+    next: null,
+    shades: 'down',
+    frames: [
+      { rows: sitting, hold: 28 },
+      { rows: breathe(sitting), hold: 28 },
+    ],
+  },
+
+  // And back up.
+  standup: {
+    next: 'idle',
+    shades: 'down',
+    frames: [
+      { rows: sitting, hold: 4 },
+      { rows: breathe(standing), hold: 4 },
     ],
   },
 

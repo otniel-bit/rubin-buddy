@@ -416,7 +416,10 @@ final class Bubble {
 
     var isVisible: Bool { window.isVisible }
 
-    func show(_ text: String, over buddy: NSRect, pixel: Double, screen: NSScreen?) {
+    func show(
+        _ text: String, over buddy: NSRect, pixel: Double, screen: NSScreen?,
+        duration: Double? = nil
+    ) {
         let fontSize = max(10.0, (pixel * 4).rounded())
         let font = NSFont(name: "Monaco", size: fontSize)
             ?? .monospacedSystemFont(ofSize: fontSize, weight: .medium)
@@ -459,7 +462,7 @@ final class Bubble {
         window.orderFrontRegardless()
 
         hideWork?.cancel()
-        let seconds = min(9.0, max(3.0, 2.0 + Double(text.count) * 0.07))
+        let seconds = duration ?? min(9.0, max(3.0, 2.0 + Double(text.count) * 0.07))
         let work = DispatchWorkItem { [weak self] in self?.hide() }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
@@ -520,6 +523,22 @@ final class Buddy: NSObject, NSMenuDelegate {
     private var activeSeconds: TimeInterval = 0
     private var ticksSincePresencePoll = 0
 
+    /// The seated states. Entering meditate goes through sitdown; leaving any of
+    /// them goes through standup — request() enforces both.
+    private static let sittingStates: Set<String> = ["sitdown", "meditate"]
+
+    /// Pending steps of a guided breath; empty means not breathing.
+    private var breathWork: [DispatchWorkItem] = []
+    private var isBreathing: Bool { !breathWork.isEmpty }
+
+    /// True only when HE chose to sit because you were away. Your return ends
+    /// that sit — but never one you asked for from the menu or the state file.
+    private var satOnHisOwn = false
+
+    /// The last thing he said, surfaced in the menu for anyone who caught the
+    /// bubble vanishing and wondered.
+    private var lastSaid = ""
+
     private let localVersion: String
     /// True when running from the installed location, where update.sh applies.
     /// A developer checkout updates with git, not by being overwritten.
@@ -561,6 +580,8 @@ final class Buddy: NSObject, NSMenuDelegate {
     static var breakEvery: TimeInterval = 90 * 60
     /// Being away from the machine this long counts as a break taken.
     static var breakReset: TimeInterval = 15 * 60
+    /// When you've been away this long, he sits down and meditates.
+    static var meditateAfter: TimeInterval = 8 * 60
 
     private static let sizeChoices: [(String, Double)] = [
         ("Tiny", 2.0), ("Small", 2.5), ("Medium", 3.5), ("Large", 5.0),
@@ -620,8 +641,14 @@ final class Buddy: NSObject, NSMenuDelegate {
 
         view.onGrab = { [weak self] in self?.bubble.hide() }
         view.onClick = { [weak self] in
-            self?.request("nod")
-            self?.speakLine()
+            guard let self else { return }
+            // Mid-breath, a click means "enough" — he stands, nothing more.
+            if self.isBreathing {
+                self.cancelBreath(standUp: true)
+                return
+            }
+            self.request("nod")
+            self.speakLine()
         }
         view.onDragEnd = { [weak self] in self?.saveOrigin() }
         view.onRightClick = { [weak self] event in
@@ -764,9 +791,26 @@ final class Buddy: NSObject, NSMenuDelegate {
     }
 
     /// Ask for an animation. Inserts a shades-up/shades-down gesture first when
-    /// the target's shade position doesn't match where they currently are.
+    /// the target's shade position doesn't match where they currently are, and
+    /// routes into and out of sitting through sitdown/standup.
     private func request(_ name: String) {
         guard let target = sprites.animations[name] else { return }
+
+        // Leaving the floor: anything that isn't sitting goes through standup.
+        if Self.sittingStates.contains(currentAnimation), !Self.sittingStates.contains(name),
+            name != "standup"
+        {
+            satOnHisOwn = false
+            pendingTarget = name == "idle" ? nil : name  // standup resolves to idle itself
+            play("standup")
+            return
+        }
+        // Taking the floor: meditate always begins by sitting down.
+        if name == "meditate", !Self.sittingStates.contains(currentAnimation) {
+            play("sitdown")
+            return
+        }
+
         let here = sprites.animations[currentAnimation]?.shades ?? "down"
 
         if target.isTransition {
@@ -884,6 +928,12 @@ final class Buddy: NSObject, NSMenuDelegate {
 
         guard let raw = try? String(contentsOf: stateFile, encoding: .utf8) else { return }
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Not an animation: "breathe" in the state file starts a guided breath,
+        // so hooks and scripts can offer one ("state.sh breathe").
+        if name == "breathe" {
+            if !isBreathing { takeABreath() }
+            return
+        }
         guard !name.isEmpty, sprites.animations[name] != nil else { return }
         noteStateEvent(name)
         // Re-triggering what's already playing would just make it stutter.
@@ -901,6 +951,8 @@ final class Buddy: NSObject, NSMenuDelegate {
         // the next one out, so fidgets only happen after genuine quiet.
         fidgetUntil = nil
         scheduleNextFidget()
+        // And it trumps a guided breath — the incoming state change re-poses him.
+        cancelBreath(standUp: false)
 
         if name == "glasses" || name == "look" {
             if waitingSince == nil {
@@ -953,6 +1005,7 @@ final class Buddy: NSObject, NSMenuDelegate {
             lineBag = all.shuffled()
         }
         guard let line = lineBag.popLast() else { return }
+        lastSaid = line
         bubble.show(line, over: window.frame, pixel: pixel, screen: window.screen)
     }
 
@@ -985,6 +1038,8 @@ final class Buddy: NSObject, NSMenuDelegate {
         .keyDown, .mouseMoved, .leftMouseDown, .rightMouseDown, .scrollWheel,
     ]
 
+    private static let greetDayKey = "buddyGreetDay"
+
     private func pollPresence() {
         let idle = Self.inputTypes
             .map { CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: $0) }
@@ -992,10 +1047,24 @@ final class Buddy: NSObject, NSMenuDelegate {
 
         if idle < 60 {
             activeSeconds += 1
-        } else if idle >= Self.breakReset {
-            activeSeconds = 0  // you took a real break; the clock restarts
+
+            // You're back: he finishes nothing, he just gets up. Only for sits
+            // he started himself — one you asked for is yours to end.
+            if satOnHisOwn, Self.sittingStates.contains(currentAnimation), !isBreathing {
+                satOnHisOwn = false
+                request("idle")
+            }
+            greetTheMorning()
+        } else {
+            if idle >= Self.breakReset {
+                activeSeconds = 0  // you took a real break; the clock restarts
+            }
+            // Nobody's here. He has his own practice.
+            if idle >= Self.meditateAfter, currentAnimation == "idle" {
+                satOnHisOwn = true
+                request("meditate")
+            }
         }
-        // Between those: short pause — the clock neither runs nor resets.
 
         guard activeSeconds >= Self.breakEvery else { return }
         let now = Date()
@@ -1004,6 +1073,20 @@ final class Buddy: NSObject, NSMenuDelegate {
         guard canSpeakContextual(now) else { return }
         speakContextual(["the world"], at: now)
         activeSeconds = 0
+    }
+
+    /// One line for your first activity of the day, leaning toward beginnings.
+    /// The day is only marked once he actually says it, so a blocked attempt
+    /// (bubble up, cooldown) retries on a later poll instead of skipping a day.
+    private func greetTheMorning() {
+        let day = ISO8601DateFormatter.string(
+            from: Date(), timeZone: .current,
+            formatOptions: [.withFullDate])
+        guard UserDefaults.standard.string(forKey: Self.greetDayKey) != day else { return }
+        let now = Date()
+        guard canSpeakContextual(now) else { return }
+        UserDefaults.standard.set(day, forKey: Self.greetDayKey)
+        speakContextual(["beginnings and endings", "practice"], at: now)
     }
 
     private func canSpeakContextual(_ now: Date) -> Bool {
@@ -1020,6 +1103,7 @@ final class Buddy: NSObject, NSMenuDelegate {
         if Buddy.debug {
             FileHandle.standardError.write("ctx \(groupNames): \(line)\n".data(using: .utf8)!)
         }
+        lastSaid = line
         bubble.show(line, over: window.frame, pixel: pixel, screen: window.screen)
         lastContextual = now
         // He just spoke; push the random line back out so they don't stack.
@@ -1070,6 +1154,47 @@ final class Buddy: NSObject, NSMenuDelegate {
     private func say(_ text: String) {
         window.orderFrontRegardless()
         bubble.show(text, over: window.frame, pixel: pixel, screen: window.screen)
+    }
+
+    // MARK: guided breath
+
+    /// A slow minute together: he sits, and the bubble paces four rounds of
+    /// 4-4-6. No streaks, no history, no reminder to do it again.
+    @objc func takeABreath() {
+        if isBreathing {
+            cancelBreath(standUp: true)
+            return
+        }
+        request("meditate")
+        var at = 1.6  // let him get seated first
+        var steps: [(String, Double)] = []
+        for _ in 0..<4 { steps += [("In…", 4), ("Hold…", 4), ("Out…", 6)] }
+        for (text, length) in steps {
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.bubble.show(
+                    text, over: self.window.frame, pixel: self.pixel,
+                    screen: self.window.screen, duration: length - 0.4)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + at, execute: work)
+            breathWork.append(work)
+            at += length
+        }
+        let done = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.breathWork.removeAll()
+            self.request("idle")  // he stands; no line — the silence is part of it
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + at + 0.5, execute: done)
+        breathWork.append(done)
+    }
+
+    private func cancelBreath(standUp: Bool) {
+        guard isBreathing else { return }
+        breathWork.forEach { $0.cancel() }
+        breathWork.removeAll()
+        bubble.hide()
+        if standUp { request("idle") }
     }
 
     // MARK: menu bar
@@ -1148,7 +1273,14 @@ final class Buddy: NSObject, NSMenuDelegate {
         poseItem.submenu = poseMenu
         menu.addItem(poseItem)
 
+        if !lastSaid.isEmpty {
+            let said = NSMenuItem(
+                title: "He said: \u{201C}\(lastSaid)\u{201D}", action: nil, keyEquivalent: "")
+            said.isEnabled = false
+            menu.addItem(said)
+        }
         menu.addItem(item("Say Something", #selector(saySomething)))
+        menu.addItem(item("Take a Breath", #selector(takeABreath), on: isBreathing))
         menu.addItem(.separator())
         menu.addItem(
             item("Follow Claude Code", #selector(toggleFollowClaude), on: hooksWired))
@@ -1352,6 +1484,7 @@ if env["RUBIN_CTX_FAST"] == "1" {
     Buddy.fidgetLength = 3...5
     Buddy.breakEvery = 30
     Buddy.breakReset = 10
+    Buddy.meditateAfter = 15
 }
 
 if let spec = env["RUBIN_CHATTER"] {

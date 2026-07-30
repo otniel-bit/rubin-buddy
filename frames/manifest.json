@@ -138,6 +138,54 @@
         }
       ]
     },
+    "sitdown": {
+      "next": "meditate",
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "sitdown-0.png",
+          "hold": 5
+        },
+        {
+          "file": "sitdown-1.png",
+          "hold": 5
+        }
+      ]
+    },
+    "meditate": {
+      "next": null,
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "meditate-0.png",
+          "hold": 28
+        },
+        {
+          "file": "meditate-1.png",
+          "hold": 28
+        }
+      ]
+    },
+    "standup": {
+      "next": "idle",
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "standup-0.png",
+          "hold": 4
+        },
+        {
+          "file": "standup-1.png",
+          "hold": 4
+        }
+      ]
+    },
     "look": {
       "next": null,
       "shades": "up",

@@ -278,6 +278,27 @@ happen in genuine quiet. (`RUBIN_CTX_FAST=1` compresses the timing for testing.)
 The `nod` was also slowed from 0.6s to 1.3s — at the old tempo the "Claude
 finished" gesture played once and nobody ever saw it.
 
+### He meditates
+
+When you've been away from the machine ~8 minutes, he sits down cross-legged
+and breathes slower than usual — his own practice, not a reaction to you. When
+you come back he just gets up. A sit you start yourself (Pose menu, or
+`state.sh meditate`) is yours to end; only the ones he started on his own end
+when you return.
+
+### Take a Breath
+
+One menu item. He sits, and the bubble paces four slow rounds — *In… hold…
+out…* — about a minute, then he stands. No streaks, no history, no reminder.
+Clicking him mid-breath means "enough"; he stands, nothing more. Scriptable via
+`~/.rubin-buddy/state.sh breathe`.
+
+### Mornings, and what he last said
+
+Your first activity of each day earns one line, leaning toward *Beginnings* and
+*Practice*. And if you catch a bubble vanishing and wonder what it was, the
+menu shows `He said: "…"`.
+
 ### Shade transitions
 
 Each animation declares where the shades end up (`shades: 'up' | 'down'`), and
