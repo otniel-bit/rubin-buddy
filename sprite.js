@@ -270,15 +270,16 @@ const ANIMATIONS = {
     ],
   },
 
-  // That's the one. Head dips while the body stays put.
+  // That's the one. Head dips while the body stays put. Slow on purpose: at
+  // the old tempo the whole gesture was 0.6s once and nobody ever saw it.
   nod: {
     next: 'idle',
     shades: 'down',
     frames: [
-      { rows: standing, hold: 4 },
-      { rows: shiftBand(standing, 0, HEAD_BAND_END, 1), hold: 4 },
-      { rows: shiftBand(standing, 0, HEAD_BAND_END, 2), hold: 6 },
-      { rows: shiftBand(standing, 0, HEAD_BAND_END, 1), hold: 4 },
+      { rows: standing, hold: 8 },
+      { rows: shiftBand(standing, 0, HEAD_BAND_END, 1), hold: 8 },
+      { rows: shiftBand(standing, 0, HEAD_BAND_END, 2), hold: 16 },
+      { rows: shiftBand(standing, 0, HEAD_BAND_END, 1), hold: 8 },
     ],
   },
 

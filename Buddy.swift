@@ -511,6 +511,11 @@ final class Buddy: NSObject, NSMenuDelegate {
     private var waitingSince: Date?
     private var saidWaitingLine = false
 
+    // Idle fidgets. Only ever started FROM idle, so returning to idle when one
+    // ends is always right; a real state event cancels the return outright.
+    private var fidgetUntil: Date?
+    private var nextFidgetAt = Date.distantFuture
+
     private let localVersion: String
     /// True when running from the installed location, where update.sh applies.
     /// A developer checkout updates with git, not by being overwritten.
@@ -541,6 +546,11 @@ final class Buddy: NSObject, NSMenuDelegate {
     static var ctxStretch: TimeInterval = 2 * 60 * 60
     /// A pause longer than this ends the stretch.
     static var ctxGap: TimeInterval = 15 * 60
+    /// Quiet time between idle fidgets, and how long one runs. Between turns he
+    /// used to be a two-frame bob for minutes on end — most of what anyone ever
+    /// saw of him. Now idleness has a life of its own.
+    static var fidgetEvery: ClosedRange<Double> = 25...75
+    static var fidgetLength: ClosedRange<Double> = 3.5...7
 
     private static let sizeChoices: [(String, Double)] = [
         ("Tiny", 2.0), ("Small", 2.5), ("Medium", 3.5), ("Large", 5.0),
@@ -621,6 +631,7 @@ final class Buddy: NSObject, NSMenuDelegate {
 
         installStatusItem()
         scheduleNextLine()
+        scheduleNextFidget()
         renderCurrentFrame()
         window.orderFrontRegardless()
 
@@ -803,6 +814,21 @@ final class Buddy: NSObject, NSMenuDelegate {
             }
         }
 
+        // Idle fidgets. A gesture ends by returning to idle; a state event that
+        // arrives mid-fidget takes over immediately (pollState clears the timer).
+        if let until = fidgetUntil {
+            if Date() >= until {
+                fidgetUntil = nil
+                request("idle")
+                scheduleNextFidget()
+            }
+        } else if currentAnimation == "idle", Date() >= nextFidgetAt {
+            if let gesture = ["stroke", "think", "glasses"].randomElement() {
+                fidgetUntil = Date().addingTimeInterval(.random(in: Self.fidgetLength))
+                request(gesture)
+            }
+        }
+
         guard let animation, !animation.frames.isEmpty else { return }
         ticksOnFrame += 1
         guard ticksOnFrame >= max(1, animation.frames[frameIndex].hold) else { return }
@@ -855,6 +881,11 @@ final class Buddy: NSObject, NSMenuDelegate {
         if now.timeIntervalSince(lastStateEvent) > Self.ctxGap { activeSince = now }
         lastStateEvent = now
 
+        // Real activity trumps fidgeting: cancel any gesture in flight and push
+        // the next one out, so fidgets only happen after genuine quiet.
+        fidgetUntil = nil
+        scheduleNextFidget()
+
         if name == "glasses" || name == "look" {
             if waitingSince == nil {
                 waitingSince = now
@@ -880,6 +911,10 @@ final class Buddy: NSObject, NSMenuDelegate {
     private func scheduleNextLine() {
         guard let range = Buddy.quietSecondsRange else { return }
         ticksUntilSpeaking = Int.random(in: range) * Self.ticksPerSecond
+    }
+
+    private func scheduleNextFidget() {
+        nextFidgetAt = Date().addingTimeInterval(.random(in: Self.fidgetEvery))
     }
 
     /// Re-read on every line so edits to lines.txt land without a restart.
@@ -1270,6 +1305,8 @@ if env["RUBIN_CTX_FAST"] == "1" {
     Buddy.ctxWait = 8
     Buddy.ctxStretch = 40
     Buddy.ctxGap = 20
+    Buddy.fidgetEvery = 5...9
+    Buddy.fidgetLength = 3...5
 }
 
 if let spec = env["RUBIN_CHATTER"] {

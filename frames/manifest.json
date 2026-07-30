@@ -74,19 +74,19 @@
       "frames": [
         {
           "file": "nod-0.png",
-          "hold": 4
+          "hold": 8
         },
         {
           "file": "nod-1.png",
-          "hold": 4
+          "hold": 8
         },
         {
           "file": "nod-2.png",
-          "hold": 6
+          "hold": 16
         },
         {
           "file": "nod-3.png",
-          "hold": 4
+          "hold": 8
         }
       ]
     },

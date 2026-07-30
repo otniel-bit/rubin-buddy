@@ -265,6 +265,19 @@ Drive him by hand with any animation name:
 
 `idle` · `think` · `stroke` · `nod` · `glasses` · `unglasses` · `look`
 
+### Idle fidgets
+
+Reacting to Claude Code turned out to be the smaller half of looking alive —
+between turns he sat in a two-frame bob for minutes, which is most of what
+anyone actually saw. So idleness has a life of its own now: every 25–75 quiet
+seconds he does something — strokes the beard, sits with a thought, or pushes
+his shades up, looks around, and puts them back. A real Claude Code event
+cancels any fidget instantly and pushes the next one out, so fidgets only ever
+happen in genuine quiet. (`RUBIN_CTX_FAST=1` compresses the timing for testing.)
+
+The `nod` was also slowed from 0.6s to 1.3s — at the old tempo the "Claude
+finished" gesture played once and nobody ever saw it.
+
 ### Shade transitions
 
 Each animation declares where the shades end up (`shades: 'up' | 'down'`), and
