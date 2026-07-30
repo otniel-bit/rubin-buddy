@@ -129,13 +129,44 @@ enum Updater {
     /// Runs the installer detached. It stops the old copy and starts the new
     /// one itself, so this process is expected to die partway through — which
     /// is why it must not be a child that dies with us.
-    static func runInstaller() {
+    /// Runs the installer detached. Success normally kills this very process
+    /// (the installer replaces and restarts us), so the termination handler
+    /// firing with a bad status — or at all, in a process still alive — means
+    /// the update failed and someone should hear about it.
+    ///
+    /// Downloaded to a file first, never `curl | sh`: piping executes the
+    /// script as it streams, and a dropped connection mid-transfer would run a
+    /// truncated prefix of it. RUBIN_AUTO=1 tells the installer it's running
+    /// headless so it must never prompt.
+    static var installerTask: Process?
+
+    static func runInstaller(onFailure: @escaping (String) -> Void) {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rubin-buddy-install-\(getpid()).sh")
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "curl -fsSL '\(installerURL.absoluteString)' | sh"]
+        task.arguments = [
+            "-c",
+            "curl -fsSL '\(installerURL.absoluteString)' -o '\(tmp.path)' "
+                + "&& RUBIN_AUTO=1 sh '\(tmp.path)'; s=$?; rm -f '\(tmp.path)'; exit $s",
+        ]
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
-        try? task.run()
+        task.standardInput = FileHandle.nullDevice
+        task.terminationHandler = { finished in
+            installerTask = nil
+            if finished.terminationStatus != 0 {
+                DispatchQueue.main.async {
+                    onFailure("Update failed. Run ~/.rubin-buddy/update.sh in Terminal.")
+                }
+            }
+        }
+        do {
+            try task.run()
+            installerTask = task
+        } catch {
+            onFailure("Couldn't start the update.")
+        }
     }
 }
 
@@ -179,6 +210,8 @@ enum LoginItem {
             "Label": label,
             "ProgramArguments": [executable],
             "RunAtLoad": true,
+            // Restart him after a crash; menu Quit exits 0 and stays quit.
+            "KeepAlive": ["SuccessfulExit": false],
             "ProcessType": "Interactive",
             "StandardErrorPath": logPath,
         ]
@@ -558,6 +591,11 @@ final class Buddy: NSObject, NSMenuDelegate {
     static var quietSecondsRange: ClosedRange<Int>? = 150...420
     /// RUBIN_DEBUG=1 logs every animation change to stderr.
     static var debug = false
+    /// True when RUBIN_SCALE / a scale argument was given at launch — an
+    /// explicit ask that outranks the remembered menu choice for this run.
+    static var scaleFromLaunch = false
+    /// Likewise for RUBIN_CHATTER.
+    static var chatterFromLaunch = false
 
     // Contextual-speech timing. Vars, not lets, so RUBIN_CTX_FAST can shrink
     // them for testing — the triggers are otherwise hours apart by design.
@@ -582,6 +620,9 @@ final class Buddy: NSObject, NSMenuDelegate {
     static var breakReset: TimeInterval = 15 * 60
     /// When you've been away this long, he sits down and meditates.
     static var meditateAfter: TimeInterval = 8 * 60
+    /// A busy pose (think/stroke) with no state event for this long means the
+    /// session died without a Stop; he drifts back to idle.
+    static var busyStaleAfter: TimeInterval = 30 * 60
 
     private static let sizeChoices: [(String, Double)] = [
         ("Tiny", 2.0), ("Small", 2.5), ("Medium", 3.5), ("Large", 5.0),
@@ -596,9 +637,10 @@ final class Buddy: NSObject, NSMenuDelegate {
         self.sprites = sprites
         self.stateFile = stateFile
         self.linesFile = linesFile
-        // A size chosen from the menu bar outlives the launch argument.
+        // Precedence: an explicit env/argument beats the remembered menu choice
+        // (you typed it, you meant it); the menu choice beats the default.
         let stored = UserDefaults.standard.double(forKey: Self.scaleKey)
-        self.requestedScale = stored > 0 ? stored : scale
+        self.requestedScale = Buddy.scaleFromLaunch ? scale : (stored > 0 ? stored : scale)
 
         let here = Bundle.main.bundleURL
         self.localVersion =
@@ -616,7 +658,8 @@ final class Buddy: NSObject, NSMenuDelegate {
 
         super.init()
 
-        if let stored = UserDefaults.standard.string(forKey: Self.chatterKey),
+        if !Buddy.chatterFromLaunch,
+            let stored = UserDefaults.standard.string(forKey: Self.chatterKey),
             let match = Self.chatterChoices.first(where: { $0.0 == stored })
         {
             Self.quietSecondsRange = match.1
@@ -647,6 +690,12 @@ final class Buddy: NSObject, NSMenuDelegate {
                 self.cancelBreath(standUp: true)
                 return
             }
+            // Waiting on you, eyes on you: a nod would drop the shades and lose
+            // the waiting posture. He's already giving you his attention.
+            if self.currentAnimation == "look" {
+                self.speakLine()
+                return
+            }
             self.request("nod")
             self.speakLine()
         }
@@ -658,6 +707,11 @@ final class Buddy: NSObject, NSMenuDelegate {
 
         try? FileManager.default.createDirectory(
             at: stateFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Whatever state the previous session left on disk is history, not news —
+        // without this he'd replay a stale "stroke" from last week at every launch.
+        lastStateStamp =
+            (try? FileManager.default.attributesOfItem(atPath: stateFile.path))?[
+                .modificationDate] as? Date
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(screenChanged),
@@ -669,12 +723,28 @@ final class Buddy: NSObject, NSMenuDelegate {
         installStatusItem()
         scheduleNextLine()
         scheduleNextFidget()
+
+        // First run ever: say something soon, so a new user learns he talks
+        // without waiting the usual several minutes for the first line.
+        let firstRunKey = "buddyHasRun"
+        if !UserDefaults.standard.bool(forKey: firstRunKey) {
+            UserDefaults.standard.set(true, forKey: firstRunKey)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+                guard let self, !self.isBreathing, !self.bubble.isVisible else { return }
+                self.speakLine()
+            }
+        }
+
         renderCurrentFrame()
         window.orderFrontRegardless()
 
-        timer = Timer.scheduledTimer(withTimeInterval: Self.tickInterval, repeats: true) {
+        // .common, not .default: a timer in the default mode stops while any
+        // menu is open, which froze him mid-frame whenever you used the menu bar.
+        let tickTimer = Timer(timeInterval: Self.tickInterval, repeats: true) {
             [weak self] _ in self?.tick()
         }
+        RunLoop.main.add(tickTimer, forMode: .common)
+        timer = tickTimer
 
         log("bundle=\(Bundle.main.bundleURL.path) managed=\(isManagedInstall) v=\(localVersion)")
         if isManagedInstall {
@@ -729,13 +799,15 @@ final class Buddy: NSObject, NSMenuDelegate {
             NSRect(x: old.minX, y: old.minY, width: size.width, height: size.height), display: true)
     }
 
-    /// A display being unplugged can leave him stranded off-screen.
+    /// A display being unplugged can leave him stranded off-screen. This rescue
+    /// is temporary, so it deliberately does NOT overwrite the saved position —
+    /// plug the display back in, relaunch, and he's where you left him.
     @objc private func screensRearranged() {
         screenChanged()
         guard !NSScreen.screens.contains(where: { $0.frame.intersects(window.frame) }) else {
             return
         }
-        bringBack()
+        bringBack(persist: false)
     }
 
     private func applyScale(_ scale: Double) {
@@ -805,13 +877,20 @@ final class Buddy: NSObject, NSMenuDelegate {
             play("standup")
             return
         }
-        // Taking the floor: meditate always begins by sitting down.
+        let here = sprites.animations[currentAnimation]?.shades ?? "down"
+
+        // Taking the floor: meditate always begins by sitting down — and if the
+        // shades are up, they come down first rather than teleporting.
         if name == "meditate", !Self.sittingStates.contains(currentAnimation) {
-            play("sitdown")
+            if here == "up", let bridge = sprites.transition(from: "up", to: "down") {
+                pendingTarget = "meditate"
+                play(bridge)
+            } else {
+                pendingTarget = nil  // a stale target must not hijack the sit
+                play("sitdown")
+            }
             return
         }
-
-        let here = sprites.animations[currentAnimation]?.shades ?? "down"
 
         if target.isTransition {
             // Asked to move the shades somewhere they already are — skip the
@@ -853,7 +932,7 @@ final class Buddy: NSObject, NSMenuDelegate {
         if Buddy.quietSecondsRange != nil {
             ticksUntilSpeaking -= 1
             if ticksUntilSpeaking <= 0 {
-                if !bubble.isVisible && window.isVisible { speakLine() }
+                if !bubble.isVisible && window.isVisible && !isBreathing { speakLine() }
                 scheduleNextLine()
             }
         }
@@ -879,7 +958,12 @@ final class Buddy: NSObject, NSMenuDelegate {
         if let until = fidgetUntil {
             if Date() >= until {
                 fidgetUntil = nil
-                request("idle")
+                // Only reel him back in if he's still doing the fidget. If a
+                // breath, a Pose pick, or anything else took over meanwhile,
+                // this timer has no business standing him back up.
+                if ["stroke", "think", "glasses", "look"].contains(currentAnimation) {
+                    request("idle")
+                }
                 scheduleNextFidget()
             }
         } else if currentAnimation == "idle", Date() >= nextFidgetAt {
@@ -899,7 +983,9 @@ final class Buddy: NSObject, NSMenuDelegate {
             frameIndex = 0
             if let pending = pendingTarget {
                 pendingTarget = nil
-                play(pending)
+                // Through request(), not play(): the pending step may itself
+                // need a bridge (standup into "look" must raise the shades).
+                request(pending)
                 return
             }
             if let next = animation.next {
@@ -931,13 +1017,18 @@ final class Buddy: NSObject, NSMenuDelegate {
         // Not an animation: "breathe" in the state file starts a guided breath,
         // so hooks and scripts can offer one ("state.sh breathe").
         if name == "breathe" {
-            if !isBreathing { takeABreath() }
+            if !isBreathing {
+                cancelFidget()
+                takeABreath()
+            }
             return
         }
         guard !name.isEmpty, sprites.animations[name] != nil else { return }
         noteStateEvent(name)
-        // Re-triggering what's already playing would just make it stutter.
-        guard name != currentAnimation else { return }
+        // Re-triggering what's already playing would just make it stutter — and
+        // a repeat that matches the pending target would hard-cut the bridge
+        // that's currently carrying him there.
+        guard name != currentAnimation, name != pendingTarget else { return }
         request(name)
     }
 
@@ -985,13 +1076,20 @@ final class Buddy: NSObject, NSMenuDelegate {
         nextFidgetAt = Date().addingTimeInterval(.random(in: Self.fidgetEvery))
     }
 
+    /// For anything that takes over the body deliberately: forget the fidget in
+    /// flight so its return-to-idle timer can't yank the new pose away.
+    private func cancelFidget() {
+        fidgetUntil = nil
+        scheduleNextFidget()
+    }
+
     /// Re-read on every line so edits to lines.txt land without a restart.
     private func lines() -> [String] {
         guard let raw = try? String(contentsOf: linesFile, encoding: .utf8) else {
             return Self.fallbackLines
         }
         let parsed = raw.split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && !$0.hasPrefix("#") }
         return parsed.isEmpty ? Self.fallbackLines : parsed
     }
@@ -1016,13 +1114,13 @@ final class Buddy: NSObject, NSMenuDelegate {
         var groups: [String: [String]] = [:]
         var current = ""
         for rawLine in raw.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             if line.hasPrefix("#") {
                 if line.contains("──") {
                     let name = line
                         .replacingOccurrences(of: "#", with: "")
                         .replacingOccurrences(of: "─", with: "")
-                        .trimmingCharacters(in: .whitespaces)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
                     if !name.isEmpty { current = name.lowercased() }
                 }
                 continue
@@ -1039,8 +1137,27 @@ final class Buddy: NSObject, NSMenuDelegate {
     ]
 
     private static let greetDayKey = "buddyGreetDay"
+    /// A gap in your activity this long makes the next activity an "arrival" —
+    /// the thing a morning greeting is actually about.
+    static var arrivalGap: TimeInterval = 4 * 60 * 60
+
+    /// Wall clock of the last poll that saw you active; nil until the first.
+    private var lastActiveAt: Date?
+    /// Wall clock of the previous poll, whatever it saw. A large gap here means
+    /// the Mac was asleep — polls don't run while it sleeps.
+    private var lastPollAt = Date()
 
     private func pollPresence() {
+        let now = Date()
+        // The machine sleeping IS a break, but the idle clock can't see it:
+        // wake the Mac after eight hours and the very first poll reports
+        // idle≈0 (you just touched the keyboard), so the away-branch below
+        // never runs and yesterday's activeSeconds would still be on the books.
+        if now.timeIntervalSince(lastPollAt) >= Self.breakReset {
+            activeSeconds = 0
+        }
+        lastPollAt = now
+
         let idle = Self.inputTypes
             .map { CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: $0) }
             .min() ?? .infinity
@@ -1054,7 +1171,19 @@ final class Buddy: NSObject, NSMenuDelegate {
                 satOnHisOwn = false
                 request("idle")
             }
-            greetTheMorning()
+
+            // An arrival is activity after a real gap (or the first since
+            // launch) — NOT the date flipping at midnight under your hands.
+            let isArrival = lastActiveAt.map { now.timeIntervalSince($0) >= Self.arrivalGap } ?? true
+            if isArrival { greetTheMorning() }
+            lastActiveAt = now
+
+            // The break nudge belongs here, while you're present — firing it
+            // into an empty room both wasted the line and reset the clock.
+            if activeSeconds >= Self.breakEvery, canSpeakContextual(now) {
+                speakContextual(["the world"], at: now)
+                activeSeconds = 0
+            }
         } else {
             if idle >= Self.breakReset {
                 activeSeconds = 0  // you took a real break; the clock restarts
@@ -1066,16 +1195,17 @@ final class Buddy: NSObject, NSMenuDelegate {
             }
         }
 
-        guard activeSeconds >= Self.breakEvery else { return }
-        let now = Date()
-        // If he can't speak right now (cooldown, hidden, mid-bubble), the time
-        // stays on the clock and this fires on a later poll instead.
-        guard canSpeakContextual(now) else { return }
-        speakContextual(["the world"], at: now)
-        activeSeconds = 0
+        // A think/stroke with no state event for this long is a dead session —
+        // Claude Code crashed or the terminal was killed, so no Stop ever came.
+        // He shouldn't work the beard for a ghost.
+        if ["think", "stroke"].contains(currentAnimation),
+            now.timeIntervalSince(lastStateEvent) >= Self.busyStaleAfter
+        {
+            request("idle")
+        }
     }
 
-    /// One line for your first activity of the day, leaning toward beginnings.
+    /// One line for your first arrival of the day, leaning toward beginnings.
     /// The day is only marked once he actually says it, so a blocked attempt
     /// (bubble up, cooldown) retries on a later poll instead of skipping a day.
     private func greetTheMorning() {
@@ -1091,6 +1221,7 @@ final class Buddy: NSObject, NSMenuDelegate {
 
     private func canSpeakContextual(_ now: Date) -> Bool {
         Buddy.quietSecondsRange != nil && window.isVisible && !bubble.isVisible
+            && !isBreathing  // never interject between "Hold…" and "Out…"
             && now.timeIntervalSince(lastContextual) >= Self.ctxCooldown
     }
 
@@ -1121,6 +1252,14 @@ final class Buddy: NSObject, NSMenuDelegate {
         FileHandle.standardError.write("\(message)\n".data(using: .utf8)!)
     }
 
+    /// True from announcing an update until its installer reports failure.
+    /// (Success kills this process, so there is no "success" transition.)
+    private var updateInFlight = false
+    /// A version whose install already failed once — retried silently on later
+    /// checks, never re-announced. "New version. Updating." every six hours
+    /// while nothing changes is worse than no updater at all.
+    private var announcedFailedVersion: String?
+
     private func checkForUpdates(userAsked: Bool) {
         log(
             "update check: asked=\(userAsked) auto=\(autoUpdateEnabled) "
@@ -1129,6 +1268,9 @@ final class Buddy: NSObject, NSMenuDelegate {
             log("update check: skipped")
             return
         }
+        guard !updateInFlight else { return }
+        // Never yank him out from under a guided breath; the next check gets it.
+        if isBreathing, !userAsked { return }
         Updater.fetchLatest { [weak self] remote in
             guard let self else { return }
             self.log("update check: remote=\(remote ?? "nil")")
@@ -1144,9 +1286,23 @@ final class Buddy: NSObject, NSMenuDelegate {
                 if userAsked { self.say("\(remote) is out. Developer build — git pull.") }
                 return
             }
-            self.say("New version, \(remote). Updating.")
+            guard !self.updateInFlight else { return }
+            self.updateInFlight = true
+            if userAsked || self.announcedFailedVersion != remote {
+                self.say("New version, \(remote). Updating.")
+            }
             // Let the bubble land before the installer stops us.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Updater.runInstaller() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                Updater.runInstaller { message in
+                    guard let self else { return }
+                    self.updateInFlight = false
+                    // Tell the user once per broken version; retries stay silent.
+                    let alreadyAnnounced = self.announcedFailedVersion == remote
+                    self.announcedFailedVersion = remote
+                    self.log("update failed for \(remote)")
+                    if userAsked || !alreadyAnnounced { self.say(message) }
+                }
+            }
         }
     }
 
@@ -1165,6 +1321,8 @@ final class Buddy: NSObject, NSMenuDelegate {
             cancelBreath(standUp: true)
             return
         }
+        cancelFidget()
+        window.orderFrontRegardless()  // a hidden Rick pacing breaths is just noise
         request("meditate")
         var at = 1.6  // let him get seated first
         var steps: [(String, Double)] = []
@@ -1319,14 +1477,14 @@ final class Buddy: NSObject, NSMenuDelegate {
         }
     }
 
-    private func bringBack() {
+    private func bringBack(persist: Bool) {
         bubble.hide()
         window.setFrameOrigin(defaultOrigin(size: spriteSize()))
-        saveOrigin()
+        if persist { saveOrigin() }
     }
 
     @objc private func bringBackAndShow() {
-        bringBack()
+        bringBack(persist: true)  // the menu click is intentional; remember it
         window.orderFrontRegardless()
         request("glasses")  // shades up — he's looking right at you
     }
@@ -1346,6 +1504,7 @@ final class Buddy: NSObject, NSMenuDelegate {
 
     @objc private func selectAnimation(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
+        cancelFidget()
         request(name)
     }
 
@@ -1458,6 +1617,7 @@ let framesDir: URL = {
 }()
 
 // 2.5 lands on exactly 5 device pixels per sprite pixel on a 2x display.
+Buddy.scaleFromLaunch = positional.count > 1 || env["RUBIN_SCALE"] != nil
 let scale = max(
     1.0, Double(positional.count > 1 ? positional[1] : env["RUBIN_SCALE"] ?? "") ?? 2.5)
 
@@ -1485,12 +1645,15 @@ if env["RUBIN_CTX_FAST"] == "1" {
     Buddy.breakEvery = 30
     Buddy.breakReset = 10
     Buddy.meditateAfter = 15
+    Buddy.busyStaleAfter = 25
+    Buddy.arrivalGap = 40
 }
 
 if let spec = env["RUBIN_CHATTER"] {
     let parts = spec.split(separator: "-").compactMap { Int($0) }
     if parts.count == 2, parts[0] > 0, parts[1] >= parts[0] {
         Buddy.quietSecondsRange = parts[0]...parts[1]
+        Buddy.chatterFromLaunch = true
     }
 }
 

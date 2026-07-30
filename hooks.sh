@@ -50,20 +50,40 @@ hooks = settings.setdefault("hooks", {})
 marker = "rubin-buddy"          # how we recognise our own entries later
 changed = 0
 
-def is_ours(group):
-    return any(
-        marker in str(h.get("command", "")) or h.get("_rubinBuddy")
-        for h in group.get("hooks", [])
-        if isinstance(h, dict)
-    )
+def is_ours(entry):
+    """One hook entry (not a whole group) that we wrote. Matched by the exact
+    trailing signature our writer produces — a plain substring test would also
+    claim a user's own hook that merely mentions rubin-buddy."""
+    if not isinstance(entry, dict):
+        return False
+    cmd = str(entry.get("command", "")).rstrip()
+    return cmd.endswith(f"# {marker}") and "state.sh" in cmd
+
+def without_ours(groups):
+    """Strip OUR entries; preserve everyone else's, even if they share a group.
+    Matching per-entry matters: a user's own hook that merely mentions
+    rubin-buddy in a shared group must never be collateral damage."""
+    kept_groups = []
+    removed = 0
+    for group in groups:
+        if not isinstance(group, dict):
+            kept_groups.append(group)
+            continue
+        entries = group.get("hooks", [])
+        theirs = [e for e in entries if not is_ours(e)]
+        removed += len(entries) - len(theirs)
+        if theirs or not entries:
+            kept = dict(group)
+            kept["hooks"] = theirs
+            kept_groups.append(kept)
+    return kept_groups, removed
 
 for event, state in MAPPING.items():
     groups = hooks.setdefault(event, [])
     if not isinstance(groups, list):
         print(f"  skipped {event}: unexpected shape")
         continue
-    # Drop any entry of ours from a previous run, keep everyone else's.
-    kept = [g for g in groups if not (isinstance(g, dict) and is_ours(g))]
+    kept, removed = without_ours(groups)
     if mode != "--remove":
         kept.append({
             "hooks": [{
@@ -84,6 +104,14 @@ for event, state in MAPPING.items():
 if not hooks:
     settings.pop("hooks", None)
 
+# One backup of the pre-Rick state, written only the first time we ever touch
+# this file — the scariest thing a pet can do is rewrite your agent config.
+backup = settings_path + ".rubin-bak"
+if changed and not os.path.exists(backup):
+    import shutil
+    shutil.copy2(settings_path, backup)
+    print(f"  (original backed up to {backup})")
+
 tmp = settings_path + ".tmp"
 with open(tmp, "w") as f:
     json.dump(settings, f, indent=2)
@@ -95,7 +123,10 @@ print(f"  {verb} {changed} hook event(s) in {settings_path}")
 PY
 
 if [ "$MODE" = "--remove" ]; then
+    # Removing by hand is also a "no" — future installers must not re-ask.
+    touch "$SELF_DIR/.hooks-declined" 2>/dev/null || true
     printf '\n  Rick no longer follows Claude Code.\n\n'
 else
+    rm -f "$SELF_DIR/.hooks-declined" 2>/dev/null || true
     printf '\n  Rick now follows Claude Code. Open a new session to see it.\n\n'
 fi

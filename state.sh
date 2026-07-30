@@ -8,6 +8,9 @@
 set -u
 dir="${RUBIN_STATE_DIR:-$HOME/.rubin-buddy}"
 mkdir -p "$dir" 2>/dev/null || exit 0
-printf '%s' "${1:-idle}" > "$dir/state.tmp" 2>/dev/null || exit 0
-mv -f "$dir/state.tmp" "$dir/state" 2>/dev/null || exit 0
+# Per-process temp name: parallel Claude Code sessions all run these hooks, and
+# a shared temp path let concurrent writers interleave and lose events.
+tmp="$dir/state.tmp.$$"
+printf '%s' "${1:-idle}" > "$tmp" 2>/dev/null || exit 0
+mv -f "$tmp" "$dir/state" 2>/dev/null || rm -f "$tmp" 2>/dev/null
 exit 0

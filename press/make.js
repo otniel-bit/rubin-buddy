@@ -14,7 +14,8 @@ const { execFileSync } = require('child_process');
 
 const HERE = __dirname;
 const FRAMES = path.join(HERE, '..', 'frames');
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const CHROME =
+  process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 const b64 = (f) =>
   'data:image/png;base64,' + fs.readFileSync(path.join(FRAMES, f)).toString('base64');
@@ -204,17 +205,22 @@ write('4-install', `
   </div>
 `);
 
-for (const name of ['1-hero', '2-states', '3-desktop', '4-install']) {
-  execFileSync(
-    CHROME,
-    [
-      '--headless=new', '--disable-gpu', '--hide-scrollbars',
-      '--force-device-scale-factor=2', '--window-size=1270,760',
-      `--screenshot=${path.join(HERE, name + '.png')}`,
-      `file://${path.join(HERE, name + '.html')}`,
-    ],
-    { stdio: 'ignore' }
-  );
-  fs.unlinkSync(path.join(HERE, name + '.html'));
-  console.log('  ' + name + '.png');
+const names = ['1-hero', '2-states', '3-desktop', '4-install'];
+try {
+  for (const name of names) {
+    execFileSync(
+      CHROME,
+      [
+        '--headless=new', '--disable-gpu', '--hide-scrollbars',
+        '--force-device-scale-factor=2', '--window-size=1270,760',
+        `--screenshot=${path.join(HERE, name + '.png')}`,
+        `file://${path.join(HERE, name + '.html')}`,
+      ],
+      { stdio: 'ignore' }
+    );
+    console.log('  ' + name + '.png');
+  }
+} finally {
+  // The HTML files are scaffolding either way — don't strand them on failure.
+  for (const name of names) fs.rmSync(path.join(HERE, name + '.html'), { force: true });
 }

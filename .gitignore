@@ -5,3 +5,5 @@ buddy
 .DS_Store
 *.tmp
 lines.txt.new
+# press/make.js intermediates (deleted on success, stranded on failure)
+press/*.html

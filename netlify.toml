@@ -1,7 +1,10 @@
-# The landing page is a single static file with no build step. Netlify serves
-# site/ as the site root; nothing here touches the app itself.
+# The landing page is static files with no build step. Netlify serves site/
+# as the site root; nothing here touches the app itself.
 [build]
   publish = "site"
+  # Deploy only when the site itself changed — every app release otherwise
+  # produced two identical deploys (the push and CI's bump commit).
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- site/ netlify.toml"
 
 [[headers]]
   for = "/*"

@@ -68,6 +68,7 @@ The bald silhouette with the shades. Everything lives there:
 | Chatter | Silent · Quiet (5–15 min) · Normal (2.5–7 min) · Talkative (45 s–2 min) |
 | Pose | Play any animation directly |
 | Say Something | A line on demand |
+| Take a Breath | A guided minute — he sits, the bubble paces you |
 | Follow Claude Code | Wires / unwires the hooks — same merge as `hooks.sh` |
 | Start at Login | Writes / removes the launchd agent |
 | Check for Updates · Auto-Update | See below |
@@ -120,14 +121,13 @@ goes, so unlike a pidfile a crash can't leave a stale one behind.
 
 ## What he says
 
-256 lines in `~/.rubin-buddy/lines.txt`, one per line, `#` for comments, grouped
-into 24 themes. He re-reads the file every time he speaks, so **edits land
+Around 270 lines in `~/.rubin-buddy/lines.txt`, one per line, `#` for comments,
+grouped into two dozen themes (the file is the source of truth for the count). He re-reads the file every time he speaks, so **edits land
 live** — no rebuild, no restart.
 
-He deals them from a **shuffled deck** rather than picking independently, so all
-256 play before any repeats. Independent picking gives a first repeat after
-roughly √(π/2 × 256) ≈ 20 draws — under two hours on the default timing — which
-would have wasted most of them.
+He deals them from a **shuffled deck** rather than picking independently, so every line plays before any repeats. Independent picking gives a first repeat after
+roughly 20 draws — under two hours on the default timing — which
+would have wasted most of the deck.
 
 ### He speaks to the moment
 
@@ -139,6 +139,8 @@ theme:
 | A turn finishes (sometimes, 1 in 3) | *Finishing* — "It'll never feel finished. Ship it." |
 | Claude has been waiting on you 3+ minutes | *Noticing* / *Taste* — you're the decision now |
 | Two hours of unbroken work | *Stepping away* — "Go for a walk. It'll keep." |
+| ~90 minutes at the machine without a real break | *The world* — "The screen will wait. The sunset won't." |
+| Your first arrival of the day (after 4+ hours away) | *Beginnings* / *Practice* — "Begin badly. Begin anyway." |
 
 Contextual lines share a 15-minute cooldown so he never gets chatty about it,
 respect Silent mode, and fall back to the whole deck if you rename the groups.
@@ -174,12 +176,13 @@ from his documented ideas:
 ## Uninstall
 
 ```bash
-~/.rubin-buddy/hooks.sh --remove
-launchctl bootout gui/$(id -u)/co.desklify.rubinbuddy
-pkill -x buddy
-rm -rf ~/.rubin-buddy ~/Library/LaunchAgents/co.desklify.rubinbuddy.plist
-defaults delete buddy
+~/.rubin-buddy/uninstall.sh
 ```
+
+Removes the app, the launch agent, the log, his hooks in
+`~/.claude/settings.json` (only his — the rest of the file is preserved, and
+the pre-Rick original is backed up as `settings.json.rubin-bak`), and his
+saved preferences.
 
 ---
 
@@ -263,7 +266,7 @@ Drive him by hand with any animation name:
 ~/.rubin-buddy/state.sh glasses
 ```
 
-`idle` · `think` · `stroke` · `nod` · `glasses` · `unglasses` · `look`
+`idle` · `think` · `stroke` · `nod` · `glasses` · `unglasses` · `look` · `sitdown` · `meditate` · `standup` — plus `breathe`, which isn't an animation but starts a guided breath
 
 ### Idle fidgets
 
@@ -316,10 +319,15 @@ manifest.
 | --- | --- | --- |
 | `RUBIN_SCALE` | `2.5` | Logical scale, decimals fine (snapped to device pixels) |
 | `RUBIN_CHATTER` | `150-420` | Seconds of quiet between unprompted lines |
-| `RUBIN_LINES` | `./lines.txt` | Where to read his lines from |
+| `RUBIN_LINES` | `lines.txt` beside the binary | Where to read his lines from |
 | `RUBIN_STATE` | `~/.rubin-buddy/state` | State file to watch |
-| `RUBIN_FRAMES` | `./frames` | Frame directory |
+| `RUBIN_FRAMES` | `frames/` beside the binary | Frame directory |
 | `RUBIN_DEBUG` | off | `1` logs every animation change to stderr |
+| `RUBIN_UPDATE_DELAY` | `45` | Seconds after launch before the first update check |
+| `RUBIN_CTX_FAST` | off | `1` compresses every contextual timer to seconds, for testing |
+
+`RUBIN_SCALE` and `RUBIN_CHATTER` given at launch override the remembered menu
+choice for that run.
 
 ## Drawing him
 

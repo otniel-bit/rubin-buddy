@@ -5,6 +5,10 @@ name: Release
 # the patch version for you — and regenerates frames/ from sprite.js in the same
 # commit, so forgetting `node build.js` can't ship new code with stale art.
 #
+# Runs on macOS so it can actually COMPILE Buddy.swift before releasing:
+# every user's machine builds this exact source via install.sh, so a release
+# that doesn't compile bricks every auto-update until the next push.
+#
 # Docs- and website-only pushes are deliberately not listed below: they'd
 # otherwise restart every user's buddy to deliver a typo fix.
 
@@ -22,16 +26,24 @@ on:
       - update.sh
       - hooks.sh
       - state.sh
+      - uninstall.sh
 
 permissions:
   contents: write
+
+# One release at a time, in order. Without this, two quick pushes race: the
+# earlier run's bump commit collides with the later push and one release is
+# silently lost.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     # The bump commit touches frames/ and VERSION, which would retrigger this
     # workflow. Ignoring our own pushes is what stops it looping.
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +54,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Compile check
+        run: swiftc -O Buddy.swift -o /tmp/buddy-ci
+
+      - name: Shell syntax check
+        run: for f in install.sh update.sh hooks.sh state.sh uninstall.sh; do sh -n "$f"; done
+
       - name: Rebuild frames from sprite.js
         run: node build.js
 
@@ -49,23 +67,36 @@ jobs:
         run: |
           set -eu
           current="$(tr -d ' \n' < VERSION)"
+          # Strictly x.y.z — each part present and numeric. A malformed VERSION
+          # must fail loudly, not be silently reinterpreted.
+          case "$current" in
+            *.*.*) : ;;
+            *) echo "VERSION is not x.y.z: '$current'" >&2; exit 1 ;;
+          esac
           major="${current%%.*}"
           rest="${current#*.}"
           minor="${rest%%.*}"
           patch="${rest#*.}"
-          case "$major$minor$patch" in
-            ''|*[!0-9]*) echo "VERSION is not x.y.z: '$current'" >&2; exit 1 ;;
-          esac
+          for part in "$major" "$minor" "$patch"; do
+            case "$part" in
+              ''|*[!0-9]*) echo "VERSION is not x.y.z: '$current'" >&2; exit 1 ;;
+            esac
+          done
           printf '%s' "$major.$minor.$((patch + 1))" > VERSION
           echo "Released $(cat VERSION) (was $current)" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Commit
+      - name: Commit and push (with retry)
         run: |
           set -eu
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add VERSION frames preview.png
-          # Nothing to do if the frames were already current and only VERSION moved.
-          git diff --cached --quiet && exit 0
           git commit -m "Release $(cat VERSION)"
-          git push
+          # A docs-only push can land while this runs; rebase and retry rather
+          # than losing the release.
+          n=0
+          until git push; do
+            n=$((n + 1))
+            [ "$n" -ge 3 ] && { echo "push failed after 3 attempts" >&2; exit 1; }
+            git pull --rebase origin main
+          done

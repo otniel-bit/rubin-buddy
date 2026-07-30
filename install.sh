@@ -4,14 +4,22 @@
 #   curl -fsSL https://raw.githubusercontent.com/otniel-bit/rubin-buddy/main/install.sh | sh
 #
 # This same script is the updater — it's idempotent, preserves an edited
-# lines.txt, and restarts him when it's done.
+# lines.txt, respects a disabled Start-at-Login, and restarts him when done.
 #
 # It builds from source on your machine rather than shipping a binary. That's
 # deliberate: a downloaded unsigned binary gets quarantined by Gatekeeper and
 # needs a right-click-open dance, while something you compiled locally just
 # runs. It also means you can read exactly what you're installing.
+#
+# Everything lives inside main(), invoked on the very last line. Under
+# `curl | sh` the shell executes the script AS IT STREAMS — if the connection
+# dropped halfway through a top-down script, the downloaded prefix would run
+# and the rest never would. With the wrapper, a truncated download dies parsing
+# an unterminated function instead of half-installing.
 
 set -eu
+
+main() {
 
 REPO="otniel-bit/rubin-buddy"
 BRANCH="main"
@@ -19,6 +27,8 @@ DEST="$HOME/.rubin-buddy"
 LABEL="co.desklify.rubinbuddy"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/rubin-buddy.log"
+# Set by the in-app auto-updater: never prompt, never touch a terminal.
+AUTO="${RUBIN_AUTO:-}"
 
 say() { printf '  %s\n' "$*"; }
 die() { printf '\n  %s\n\n' "$*" >&2; exit 1; }
@@ -35,6 +45,16 @@ if ! command -v swiftc >/dev/null 2>&1; then
     xcode-select --install
 
   then run this again."
+fi
+
+# Was he installed before, and had the user turned Start at Login off?
+WAS_INSTALLED=0
+[ -f "$DEST/VERSION" ] && WAS_INSTALLED=1
+LOGIN_ENABLED=1
+if [ "$WAS_INSTALLED" = 1 ] && [ ! -f "$PLIST" ]; then
+    # Updating an install whose LaunchAgent the user removed via the menu:
+    # rewriting it here would silently revert their choice.
+    LOGIN_ENABLED=0
 fi
 
 # --- fetch ------------------------------------------------------------------
@@ -61,20 +81,22 @@ say "Building $VERSION (this takes a few seconds)..."
 
 # --- install ----------------------------------------------------------------
 #
-# Everything goes in by atomic rename, never written over in place. Copying onto
-# a *running* executable gets that process killed with SIGKILL "Code Signature
+# Everything goes in by rename, never written over in place. Copying onto a
+# *running* executable gets that process killed with SIGKILL "Code Signature
 # Invalid": the kernel checks code pages against the binary's signature as it
 # pages them in, and the bytes changed underneath it. rename() only swaps the
 # directory entry, so a running copy keeps its original inode and stays valid.
 
 mkdir -p "$DEST"
 
-rm -rf "$DEST/.frames.new"
+rm -rf "$DEST/.frames.new" "$DEST/.frames.old"
 cp -R "$SRC/frames" "$DEST/.frames.new"
-rm -rf "$DEST/frames"
+# Swap via two renames — the no-frames window is microseconds, not a full copy.
+if [ -d "$DEST/frames" ]; then mv "$DEST/frames" "$DEST/.frames.old"; fi
 mv "$DEST/.frames.new" "$DEST/frames"
+rm -rf "$DEST/.frames.old"
 
-for f in buddy state.sh update.sh hooks.sh VERSION; do
+for f in buddy state.sh update.sh hooks.sh uninstall.sh VERSION; do
     [ -e "$SRC/$f" ] || continue
     cp "$SRC/$f" "$DEST/.$f.new"
     case "$f" in *.sh|buddy) chmod +x "$DEST/.$f.new" ;; esac
@@ -95,10 +117,23 @@ elif [ "$(shasum -a 256 "$DEST/lines.txt" | cut -d' ' -f1)" != "$new_sha" ]; the
 fi
 printf '%s' "$new_sha" > "$DEST/.shipped-lines.sha"
 
-# --- start at login ---------------------------------------------------------
+# --- start ------------------------------------------------------------------
 
-mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")"
-cat > "$PLIST" <<PLISTEOF
+DOMAIN="gui/$(id -u)"
+
+# Stop the old copy now that the new files are safely in place, and actually
+# wait for it to go — pkill returns as soon as the signal is sent.
+pkill -x buddy 2>/dev/null || true
+i=0
+while pgrep -x buddy >/dev/null 2>&1 && [ "$i" -lt 25 ]; do
+    sleep 0.2
+    i=$((i + 1))
+done
+pkill -9 -x buddy 2>/dev/null || true
+
+if [ "$LOGIN_ENABLED" = 1 ]; then
+    mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")"
+    cat > "$PLIST" <<PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -111,6 +146,11 @@ cat > "$PLIST" <<PLISTEOF
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
 	<key>ProcessType</key>
 	<string>Interactive</string>
 	<key>StandardErrorPath</key>
@@ -119,44 +159,36 @@ cat > "$PLIST" <<PLISTEOF
 </plist>
 PLISTEOF
 
-DOMAIN="gui/$(id -u)"
-
-# Stop the old copy now that the new files are safely in place, and actually
-# wait for it to go. pkill returns as soon as the signal is sent, so bootstrapping
-# straight away can leave two of him on screen.
-pkill -x buddy 2>/dev/null || true
-i=0
-while pgrep -x buddy >/dev/null 2>&1 && [ "$i" -lt 25 ]; do
-    sleep 0.2
-    i=$((i + 1))
-done
-pkill -9 -x buddy 2>/dev/null || true
-
-launchctl enable "$DOMAIN/$LABEL" 2>/dev/null || true
-if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
-    launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
-    # bootout is asynchronous; bootstrapping too early fails with EINPROGRESS.
-    j=0
-    while launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 && [ "$j" -lt 25 ]; do
-        sleep 0.2
-        j=$((j + 1))
-    done
-fi
-# Only start him ourselves if launchd declined the job. Checking "is he running
-# yet?" after a fixed sleep raced with launchd still bringing him up, and started
-# a second copy.
-if launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null; then
-    k=0
-    while ! pgrep -x buddy >/dev/null 2>&1 && [ "$k" -lt 40 ]; do
-        sleep 0.2
-        k=$((k + 1))
-    done
+    launchctl enable "$DOMAIN/$LABEL" 2>/dev/null || true
+    if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+        launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+        # bootout is asynchronous; bootstrapping too early fails with EINPROGRESS.
+        j=0
+        while launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 && [ "$j" -lt 25 ]; do
+            sleep 0.2
+            j=$((j + 1))
+        done
+    fi
+    # Only start him ourselves if launchd declined the job — checking "is he
+    # running yet?" after a fixed sleep raced launchd and started a second copy.
+    if launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null; then
+        k=0
+        while ! pgrep -x buddy >/dev/null 2>&1 && [ "$k" -lt 40 ]; do
+            sleep 0.2
+            k=$((k + 1))
+        done
+    else
+        # </dev/null matters: without it the background buddy inherits the
+        # terminal's stdin and keeps the pty open after the installer exits.
+        ( nohup "$DEST/buddy" </dev/null >/dev/null 2>&1 & )
+        sleep 1
+    fi
 else
-    # </dev/null matters: without it the background buddy inherits the
-    # terminal's stdin and keeps the pty open after the installer exits.
+    say "Start at Login is off — leaving it off."
     ( nohup "$DEST/buddy" </dev/null >/dev/null 2>&1 & )
     sleep 1
 fi
+
 if pgrep -x buddy >/dev/null 2>&1; then
     printf '\n  Rick %s is on your screen, bottom-right.\n' "$VERSION"
 else
@@ -165,11 +197,11 @@ fi
 
 # --- Claude Code ------------------------------------------------------------
 # Offer the connection right here, once. This runs under `curl | sh`, where
-# stdin is the script itself — so the answer must come from /dev/tty. No
-# controlling terminal (auto-updates run headless) means no prompt: skip
-# silently; the "Follow Claude Code" toggle in the menu bar covers it later.
+# stdin is the script itself — so the answer must come from /dev/tty. Headless
+# runs (RUBIN_AUTO from the in-app updater, or no controlling terminal) skip
+# the prompt entirely; the "Follow Claude Code" menu toggle covers them later.
 # Declining is remembered so updates never nag.
-if [ -d "$HOME/.claude" ] && [ ! -f "$DEST/.hooks-declined" ] \
+if [ -z "$AUTO" ] && [ -d "$HOME/.claude" ] && [ ! -f "$DEST/.hooks-declined" ] \
     && ! grep -qs "rubin-buddy" "$HOME/.claude/settings.json"; then
     if { : < /dev/tty; } 2>/dev/null; then
         printf '\n  Make Rick follow Claude Code — think, work, nod along with it? [Y/n] ' > /dev/tty
@@ -180,7 +212,10 @@ if [ -d "$HOME/.claude" ] && [ ! -f "$DEST/.hooks-declined" ] \
                 say 'Okay. Menu bar -> "Follow Claude Code" if you change your mind.'
                 ;;
             *)
-                sh "$DEST/hooks.sh"
+                # A hooks failure (unreadable settings.json) shouldn't scuttle
+                # an otherwise complete install at the last step.
+                sh "$DEST/hooks.sh" \
+                    || say "Couldn't wire the hooks — run ~/.rubin-buddy/hooks.sh later."
                 ;;
         esac
     fi
@@ -189,10 +224,16 @@ fi
 cat <<'NEXTEOF'
 
   Settings live in the menu bar — the small bald silhouette. Size,
-  chattiness, "Follow Claude Code", and "Bring Him Back" if you
-  ever lose him.
+  chattiness, "Take a Breath", "Follow Claude Code", and "Bring Him
+  Back" if you ever lose him.
 
-  He updates himself when a new version lands. Turn that off in the
-  menu bar under Auto-Update.
+  He updates himself when a new version lands (menu bar -> Auto-Update
+  to turn that off). To remove him completely:
+
+    ~/.rubin-buddy/uninstall.sh
 
 NEXTEOF
+
+}
+
+main "$@"
