@@ -516,6 +516,10 @@ final class Buddy: NSObject, NSMenuDelegate {
     private var fidgetUntil: Date?
     private var nextFidgetAt = Date.distantFuture
 
+    /// Seconds you've spent actively at the machine since your last real break.
+    private var activeSeconds: TimeInterval = 0
+    private var ticksSincePresencePoll = 0
+
     private let localVersion: String
     /// True when running from the installed location, where update.sh applies.
     /// A developer checkout updates with git, not by being overwritten.
@@ -551,6 +555,12 @@ final class Buddy: NSObject, NSMenuDelegate {
     /// saw of him. Now idleness has a life of its own.
     static var fidgetEvery: ClosedRange<Double> = 25...75
     static var fidgetLength: ClosedRange<Double> = 3.5...7
+    /// Break nudge: after this long actively at the machine — keyboard or mouse
+    /// input within the last minute, YOUR presence, not Claude's activity — he
+    /// suggests going to live a little.
+    static var breakEvery: TimeInterval = 90 * 60
+    /// Being away from the machine this long counts as a break taken.
+    static var breakReset: TimeInterval = 15 * 60
 
     private static let sizeChoices: [(String, Double)] = [
         ("Tiny", 2.0), ("Small", 2.5), ("Medium", 3.5), ("Large", 5.0),
@@ -814,6 +824,12 @@ final class Buddy: NSObject, NSMenuDelegate {
             }
         }
 
+        ticksSincePresencePoll += 1
+        if ticksSincePresencePoll >= Self.ticksPerSecond {
+            ticksSincePresencePoll = 0
+            pollPresence()
+        }
+
         // Idle fidgets. A gesture ends by returning to idle; a state event that
         // arrives mid-fidget takes over immediately (pollState clears the timer).
         if let until = fidgetUntil {
@@ -961,6 +977,33 @@ final class Buddy: NSObject, NSMenuDelegate {
             if !line.isEmpty { groups[current, default: []].append(line) }
         }
         return groups
+    }
+
+    /// The break nudge. CGEventSource's idle clock is public API and needs no
+    /// permissions — it reports time since input, never what was typed.
+    private static let inputTypes: [CGEventType] = [
+        .keyDown, .mouseMoved, .leftMouseDown, .rightMouseDown, .scrollWheel,
+    ]
+
+    private func pollPresence() {
+        let idle = Self.inputTypes
+            .map { CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: $0) }
+            .min() ?? .infinity
+
+        if idle < 60 {
+            activeSeconds += 1
+        } else if idle >= Self.breakReset {
+            activeSeconds = 0  // you took a real break; the clock restarts
+        }
+        // Between those: short pause — the clock neither runs nor resets.
+
+        guard activeSeconds >= Self.breakEvery else { return }
+        let now = Date()
+        // If he can't speak right now (cooldown, hidden, mid-bubble), the time
+        // stays on the clock and this fires on a later poll instead.
+        guard canSpeakContextual(now) else { return }
+        speakContextual(["the world"], at: now)
+        activeSeconds = 0
     }
 
     private func canSpeakContextual(_ now: Date) -> Bool {
@@ -1307,6 +1350,8 @@ if env["RUBIN_CTX_FAST"] == "1" {
     Buddy.ctxGap = 20
     Buddy.fidgetEvery = 5...9
     Buddy.fidgetLength = 3...5
+    Buddy.breakEvery = 30
+    Buddy.breakReset = 10
 }
 
 if let spec = env["RUBIN_CHATTER"] {
