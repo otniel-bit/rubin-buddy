@@ -564,9 +564,14 @@ final class Buddy: NSObject, NSMenuDelegate {
     private var breathWork: [DispatchWorkItem] = []
     private var isBreathing: Bool { !breathWork.isEmpty }
 
-    /// True only when HE chose to sit because you were away. Your return ends
-    /// that sit — but never one you asked for from the menu or the state file.
-    private var satOnHisOwn = false
+    /// Why he's seated, when he is — each reason has its own "stand up" rule.
+    /// "away": you left; your return ends it. "night": it's late; morning (or
+    /// an event) ends it. "long": Claude's been at one task a while; the Stop
+    /// ends it. nil: you asked for the sit, so it's yours to end.
+    private var sitReason: String?
+
+    /// When the current unbroken run of think/stroke began; nil when not busy.
+    private var busySince: Date?
 
     /// The last thing he said, surfaced in the menu for anyone who caught the
     /// bubble vanishing and wondered.
@@ -623,6 +628,11 @@ final class Buddy: NSObject, NSMenuDelegate {
     /// A busy pose (think/stroke) with no state event for this long means the
     /// session died without a Stop; he drifts back to idle.
     static var busyStaleAfter: TimeInterval = 30 * 60
+    /// Claude working one task longer than this: he sits down and keeps watch —
+    /// patience reads better than ten more minutes of beard-stroking.
+    static var longTaskAfter: TimeInterval = 10 * 60
+    /// Local hours (start, end) between which idle becomes the seated pose.
+    static var nightWindow = (start: 23, end: 5)
 
     private static let sizeChoices: [(String, Double)] = [
         ("Tiny", 2.0), ("Small", 2.5), ("Medium", 3.5), ("Large", 5.0),
@@ -872,7 +882,7 @@ final class Buddy: NSObject, NSMenuDelegate {
         if Self.sittingStates.contains(currentAnimation), !Self.sittingStates.contains(name),
             name != "standup"
         {
-            satOnHisOwn = false
+            sitReason = nil
             pendingTarget = name == "idle" ? nil : name  // standup resolves to idle itself
             play("standup")
             return
@@ -1023,8 +1033,28 @@ final class Buddy: NSObject, NSMenuDelegate {
             }
             return
         }
+        // Also not an animation: "say <text>" borrows his voice — the quietest
+        // notification endpoint on the machine. Local input from the user's own
+        // scripts; capped so a runaway payload can't wallpaper the screen, and
+        // never over a guided breath.
+        if name.hasPrefix("say ") {
+            let text = String(name.dropFirst(4))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .prefix(140)
+            guard !text.isEmpty, !isBreathing else { return }
+            lastSaid = String(text)
+            if Buddy.debug {
+                FileHandle.standardError.write("say: \(text)\n".data(using: .utf8)!)
+            }
+            window.orderFrontRegardless()
+            bubble.show(String(text), over: window.frame, pixel: pixel, screen: window.screen)
+            return
+        }
         guard !name.isEmpty, sprites.animations[name] != nil else { return }
         noteStateEvent(name)
+        // Seated for a long run: more of the same work is not a reason to stand.
+        // Anything that ISN'T the same work (nod, glasses, idle) still is.
+        if sitReason == "long", ["think", "stroke"].contains(name) { return }
         // Re-triggering what's already playing would just make it stutter — and
         // a repeat that matches the pending target would hard-cut the bridge
         // that's currently carrying him there.
@@ -1054,15 +1084,38 @@ final class Buddy: NSObject, NSMenuDelegate {
             waitingSince = nil
         }
 
+        // Track how long one unbroken run of work has been going. Waiting
+        // states (glasses/look) pause nothing — a permission prompt mid-task
+        // is still the same task.
+        let longRun = busySince.map { now.timeIntervalSince($0) >= Self.longTaskAfter } ?? false
+        switch name {
+        case "think", "stroke":
+            if busySince == nil { busySince = now }
+        case "nod", "idle":
+            busySince = nil
+        default:
+            break
+        }
+
         // A finished turn sometimes earns a Finishing line — but only sometimes,
         // and never twice inside the cooldown. Every Claude turn ends with a
         // Stop, and a buddy that comments on all of them stops being listened to.
-        if name == "nod", canSpeakContextual(now), Int.random(in: 0..<3) == 0 {
+        // The exception: a LONG run ending always deserves the word, cooldown or
+        // not — if you waited half an hour for it, he has something to say.
+        if name == "nod", longRun, canSpeakIgnoringCooldown() {
+            speakContextual(["finishing"], at: now)
+        } else if name == "nod", canSpeakContextual(now), Int.random(in: 0..<3) == 0 {
             speakContextual(["finishing"], at: now)
         } else if now.timeIntervalSince(activeSince) >= Self.ctxStretch, canSpeakContextual(now) {
             speakContextual(["stepping away"], at: now)
             activeSince = now  // the two-hour clock restarts after he says it
         }
+    }
+
+    /// The gate for lines important enough to skip the cooldown — still never
+    /// in Silent mode, over another bubble, mid-breath, or while hidden.
+    private func canSpeakIgnoringCooldown() -> Bool {
+        Buddy.quietSecondsRange != nil && window.isVisible && !bubble.isVisible && !isBreathing
     }
 
     // MARK: speech
@@ -1136,6 +1189,11 @@ final class Buddy: NSObject, NSMenuDelegate {
         .keyDown, .mouseMoved, .leftMouseDown, .rightMouseDown, .scrollWheel,
     ]
 
+    static func isNight(_ now: Date) -> Bool {
+        let hour = Calendar.current.component(.hour, from: now)
+        return hour >= Self.nightWindow.start || hour < Self.nightWindow.end
+    }
+
     private static let greetDayKey = "buddyGreetDay"
     /// A gap in your activity this long makes the next activity an "arrival" —
     /// the thing a morning greeting is actually about.
@@ -1165,10 +1223,11 @@ final class Buddy: NSObject, NSMenuDelegate {
         if idle < 60 {
             activeSeconds += 1
 
-            // You're back: he finishes nothing, he just gets up. Only for sits
-            // he started himself — one you asked for is yours to end.
-            if satOnHisOwn, Self.sittingStates.contains(currentAnimation), !isBreathing {
-                satOnHisOwn = false
+            // You're back from being away: he finishes nothing, he just gets
+            // up. Only for away-sits — a night sit means he's sitting WITH
+            // you, and any other sit is yours (or a task's) to end.
+            if sitReason == "away", Self.sittingStates.contains(currentAnimation), !isBreathing {
+                sitReason = nil
                 request("idle")
             }
 
@@ -1190,18 +1249,45 @@ final class Buddy: NSObject, NSMenuDelegate {
             }
             // Nobody's here. He has his own practice.
             if idle >= Self.meditateAfter, currentAnimation == "idle" {
-                satOnHisOwn = true
+                sitReason = "away"
                 request("meditate")
             }
         }
 
-        // A think/stroke with no state event for this long is a dead session —
-        // Claude Code crashed or the terminal was killed, so no Stop ever came.
-        // He shouldn't work the beard for a ghost.
-        if ["think", "stroke"].contains(currentAnimation),
-            now.timeIntervalSince(lastStateEvent) >= Self.busyStaleAfter
+        // Late: idle becomes the seated pose — he sits with you, not at you.
+        // Events still stand him up (the sit-exit bridge handles it), and he
+        // settles back down when things go quiet again.
+        if Self.isNight(now), currentAnimation == "idle", fidgetUntil == nil, !isBreathing {
+            sitReason = "night"
+            request("meditate")
+        } else if !Self.isNight(now), sitReason == "night",
+            Self.sittingStates.contains(currentAnimation), !isBreathing
         {
-            request("idle")
+            sitReason = nil
+            request("idle")  // morning: back on his feet
+        }
+
+        // Claude has been at ONE task a long time: stroking on loop for forty
+        // minutes reads as manic. He sits down and keeps watch instead.
+        if let since = busySince, ["think", "stroke"].contains(currentAnimation),
+            now.timeIntervalSince(since) >= Self.longTaskAfter
+        {
+            sitReason = "long"
+            request("meditate")
+        }
+
+        // A busy pose with no state event for this long is a dead session —
+        // Claude Code crashed or the terminal was killed, so no Stop ever came.
+        // He shouldn't work the beard (or keep a seated vigil) for a ghost.
+        if now.timeIntervalSince(lastStateEvent) >= Self.busyStaleAfter {
+            if ["think", "stroke"].contains(currentAnimation) {
+                busySince = nil
+                request("idle")
+            } else if sitReason == "long" {
+                busySince = nil
+                sitReason = nil
+                request("idle")
+            }
         }
     }
 
@@ -1432,9 +1518,10 @@ final class Buddy: NSObject, NSMenuDelegate {
         menu.addItem(poseItem)
 
         if !lastSaid.isEmpty {
-            let said = NSMenuItem(
-                title: "He said: \u{201C}\(lastSaid)\u{201D}", action: nil, keyEquivalent: "")
-            said.isEnabled = false
+            // Clickable: copies the full line. People share these — make it easy.
+            let shown = lastSaid.count > 58 ? lastSaid.prefix(57) + "…" : Substring(lastSaid)
+            let said = item(
+                "He said: \u{201C}\(shown)\u{201D} — copy", #selector(copyLastSaid))
             menu.addItem(said)
         }
         menu.addItem(item("Say Something", #selector(saySomething)))
@@ -1506,6 +1593,12 @@ final class Buddy: NSObject, NSMenuDelegate {
         guard let name = sender.representedObject as? String else { return }
         cancelFidget()
         request(name)
+    }
+
+    @objc private func copyLastSaid() {
+        guard !lastSaid.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lastSaid, forType: .string)
     }
 
     @objc private func saySomething() {
@@ -1645,8 +1738,13 @@ if env["RUBIN_CTX_FAST"] == "1" {
     Buddy.breakEvery = 30
     Buddy.breakReset = 10
     Buddy.meditateAfter = 15
-    Buddy.busyStaleAfter = 25
+    Buddy.busyStaleAfter = 60
     Buddy.arrivalGap = 40
+    Buddy.longTaskAfter = 18
+}
+// Testing only: pretend it's the middle of the night.
+if env["RUBIN_FORCE_NIGHT"] == "1" {
+    Buddy.nightWindow = (start: 0, end: 24)
 }
 
 if let spec = env["RUBIN_CHATTER"] {

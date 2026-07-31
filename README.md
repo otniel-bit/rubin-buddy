@@ -140,6 +140,7 @@ theme:
 | Claude has been waiting on you 3+ minutes | *Noticing* / *Taste* — you're the decision now |
 | Two hours of unbroken work | *Stepping away* — "Go for a walk. It'll keep." |
 | ~90 minutes at the machine without a real break | *The world* — "The screen will wait. The sunset won't." |
+| A single task runs past ~10 minutes | He sits down and keeps watch; when it finally lands, the Finishing line is guaranteed |
 | Your first arrival of the day (after 4+ hours away) | *Beginnings* / *Practice* — "Begin badly. Begin anyway." |
 
 Contextual lines share a 15-minute cooldown so he never gets chatty about it,
@@ -266,7 +267,14 @@ Drive him by hand with any animation name:
 ~/.rubin-buddy/state.sh glasses
 ```
 
-`idle` · `think` · `stroke` · `nod` · `glasses` · `unglasses` · `look` · `sitdown` · `meditate` · `standup` — plus `breathe`, which isn't an animation but starts a guided breath
+`idle` · `think` · `stroke` · `nod` · `glasses` · `unglasses` · `look` · `sitdown` · `meditate` · `standup` — plus two words that aren't animations: `breathe` starts a guided breath, and `say` borrows his voice:
+
+```bash
+~/.rubin-buddy/state.sh say "Deploy is green."
+```
+
+One bubble, once, capped at 140 characters — the quietest notification endpoint
+on your Mac. Anything you can script can speak through him.
 
 ### Idle fidgets
 
@@ -280,6 +288,14 @@ happen in genuine quiet. (`RUBIN_CTX_FAST=1` compresses the timing for testing.)
 
 The `nod` was also slowed from 0.6s to 1.3s — at the old tempo the "Claude
 finished" gesture played once and nobody ever saw it.
+
+### Long tasks, and late nights
+
+When Claude works one task past ~10 minutes, he stops stroking the beard and
+sits down to keep watch — patience reads better than manic looping. More events
+from the same task don't stand him up; the Stop does, and a long run's ending
+always earns its Finishing line. Past 11pm his idle becomes the seated pose
+too: he sits with you, stands when something happens, settles back down.
 
 ### He meditates
 
@@ -300,7 +316,7 @@ Clicking him mid-breath means "enough"; he stands, nothing more. Scriptable via
 
 Your first activity of each day earns one line, leaning toward *Beginnings* and
 *Practice*. And if you catch a bubble vanishing and wonder what it was, the
-menu shows `He said: "…"`.
+menu shows `He said: "…"` — click it to copy the line.
 
 ### Shade transitions
 
