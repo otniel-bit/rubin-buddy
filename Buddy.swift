@@ -495,7 +495,20 @@ final class Bubble {
         window.orderFrontRegardless()
 
         hideWork?.cancel()
-        let seconds = duration ?? min(9.0, max(3.0, 2.0 + Double(text.count) * 0.07))
+        // Dense scripts read slower than their character count suggests: one
+        // CJK ideograph is a whole word, and anyone studying the line is
+        // reading it three times over (hanzi, romanization, meaning). Those
+        // lines linger 14-20s; everything else keeps the quick 3-9s.
+        let dense = text.unicodeScalars.contains {
+            (0x3400...0x9FFF).contains($0.value)      // CJK ideographs
+                || (0x3040...0x30FF).contains($0.value)  // kana
+                || (0xAC00...0xD7AF).contains($0.value)  // hangul
+        }
+        let seconds =
+            duration
+            ?? (dense
+                ? min(20.0, max(14.0, 3.0 + Double(text.count) * 0.2))
+                : min(9.0, max(3.0, 2.0 + Double(text.count) * 0.07)))
         let work = DispatchWorkItem { [weak self] in self?.hide() }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
