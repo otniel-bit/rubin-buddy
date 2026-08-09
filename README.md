@@ -174,6 +174,13 @@ from his documented ideas:
 [Ten lessons, Ian Sanders](https://www.iansanders.com/blog/ten-lessons-on-the-creative-process-from-rick-rubin) ·
 [Reduce until the identity is challenged](https://blakecrosley.com/blog/design-philosophy-rick-rubin)
 
+## Something wrong?
+
+**Report a Problem** in his menu opens a GitHub issue pre-filled with your
+version and macOS build. If he crashed or vanished, attach
+`~/Library/Logs/rubin-buddy.log` — it contains only his own errors, nothing
+personal. Or file directly: [issues](https://github.com/otniel-bit/rubin-buddy/issues).
+
 ## Uninstall
 
 ```bash

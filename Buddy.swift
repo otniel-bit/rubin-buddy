@@ -1551,12 +1551,33 @@ final class Buddy: NSObject, NSMenuDelegate {
         versionLabel.isEnabled = false
         menu.addItem(versionLabel)
         menu.addItem(item("Check for Updates", #selector(checkNow)))
+        menu.addItem(item("Report a Problem", #selector(reportProblem)))
         if isManagedInstall {
             menu.addItem(item("Auto-Update", #selector(toggleAutoUpdate), on: autoUpdateEnabled))
         }
         menu.addItem(.separator())
         menu.addItem(item("Quit Rick", #selector(quit)))
         return menu
+    }
+
+    /// Opens a GitHub issue pre-filled with the diagnostics a report needs —
+    /// the reporter shouldn't have to know what a version string is or where
+    /// the log lives.
+    @objc private func reportProblem() {
+        let os = ProcessInfo.processInfo.operatingSystemVersionString
+        let body = """
+            **What happened:**
+
+            **What I expected:**
+
+            ---
+            Rick \(localVersion) · macOS \(os)
+            If he crashed or vanished, attach `~/Library/Logs/rubin-buddy.log` — \
+            it has no personal contents, only his own errors.
+            """
+        var parts = URLComponents(string: "https://github.com/\(Updater.repo)/issues/new")!
+        parts.queryItems = [URLQueryItem(name: "body", value: body)]
+        if let url = parts.url { NSWorkspace.shared.open(url) }
     }
 
     @objc private func checkNow() {
