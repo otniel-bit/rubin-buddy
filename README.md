@@ -275,7 +275,7 @@ Drive him by hand with any animation name:
 ~/.rubin-buddy/state.sh glasses
 ```
 
-`idle` · `think` · `stroke` · `nod` · `glasses` · `unglasses` · `look` · `sitdown` · `meditate` · `standup` — plus two words that aren't animations: `breathe` starts a guided breath, and `say` borrows his voice:
+`idle` · `think` · `stroke` · `nod` · `glasses` · `unglasses` · `look` · `sitdown` · `meditate` · `standup` · `glance` · `adjust` · `stretch` · `tea` — plus two words that aren't animations: `breathe` starts a guided breath, and `say` borrows his voice:
 
 ```bash
 ~/.rubin-buddy/state.sh say "Deploy is green."
@@ -288,9 +288,11 @@ on your Mac. Anything you can script can speak through him.
 
 Reacting to Claude Code turned out to be the smaller half of looking alive —
 between turns he sat in a two-frame bob for minutes, which is most of what
-anyone actually saw. So idleness has a life of its own now: every 25–75 quiet
-seconds he does something — strokes the beard, sits with a thought, or pushes
-his shades up, looks around, and puts them back. A real Claude Code event
+anyone actually saw. So idleness has a life of its own now: he strokes the beard, sits
+with a thought, pushes his shades up and looks around, glances about the room,
+adjusts his shades, stretches, or takes a slow sip of tea — never the same
+gesture twice running. Coming to rest after work invites a gesture within
+seconds; deeper quiet spaces them out to every half-minute or so. A real Claude Code event
 cancels any fidget instantly and pushes the next one out, so fidgets only ever
 happen in genuine quiet. (`RUBIN_CTX_FAST=1` compresses the timing for testing.)
 

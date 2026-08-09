@@ -152,6 +152,15 @@ function buildRows(head, bodyRows, label) {
 
 const blank = () => Array.from({ length: H }, () => _(W));
 
+// Shift a slice of rows sideways by dx, leaving the rest in place.
+function shiftBandX(rows, from, to, dx) {
+  return rows.map((row, y) => {
+    if (y < from || y > to) return row;
+    if (dx > 0) return _(dx) + row.slice(0, W - dx);
+    return row.slice(-dx) + _(-dx);
+  });
+}
+
 // Shift a slice of rows down by n, leaving the rest in place.
 function shiftBand(rows, from, to, n) {
   const out = rows.slice();
@@ -252,6 +261,64 @@ const strokePatch = (x) => {
 // The idle right hand at the hip is painted out — that arm is up here now.
 const strokeFrame = (x, y) =>
   stamp(stamp(standing, 19, 21, ['nn', 'nn']), x, y, strokePatch(x));
+
+// --- small gestures ----------------------------------------------------------
+
+// Head turns a pixel; the body stays put. That's all a glance is.
+const HEAD_END = 13;
+const glanceL = shiftBandX(standing, 1, HEAD_END, -1);
+const glanceR = shiftBandX(standing, 1, HEAD_END, 1);
+
+// One hand up to the temple, shades lifted a pixel, eyes shut against the
+// light — everyone knows this gesture. Reuses the glasses-transition frame.
+const adjustFrame = (() => {
+  const lifted = wearing(6, 'closed');
+  // hand at the temple; the hip hand it belongs to is painted out
+  return stamp(stamp(lifted, 19, 21, ['nn', 'nn']), 16, 7, ['nss', '.ss']);
+})();
+
+// Arms straight up beside the head, hands open. The long hold IS the stretch.
+const stretchUp = (() => {
+  let rows = standing;
+  // sleeves at his sides become torso while the arms are overhead
+  for (const y of [14, 15, 16, 17, 18, 19, 20]) {
+    rows = stamp(rows, 3, y, ['bb']);
+    rows = stamp(rows, 19, y, ['bb']);
+  }
+  // left arm up (cols 2-3), right arm up (cols 20-21), hands on top
+  for (const y of [8, 9, 10, 11, 12, 13]) {
+    rows = stamp(rows, 2, y, ['nn']);
+    rows = stamp(rows, 20, y, ['nn']);
+  }
+  rows = stamp(rows, 2, 7, ['ss']);
+  rows = stamp(rows, 20, 7, ['ss']);
+  return rows;
+})();
+const stretchMid = (() => {
+  let rows = standing;
+  for (const y of [11, 12, 13]) {
+    rows = stamp(rows, 2, y, ['nn']);
+    rows = stamp(rows, 20, y, ['nn']);
+  }
+  rows = stamp(rows, 2, 10, ['ss']);
+  rows = stamp(rows, 20, 10, ['ss']);
+  return rows;
+})();
+
+// Tea. A small Claude-orange cup — raised, held at the beard, lowered.
+const teaHold = stamp(standing, 18, 19, ['rr', 'rr']);
+const teaRaise = (() => {
+  let rows = stamp(standing, 19, 21, ['nn', 'nn']);  // hip hand painted out
+  rows = stamp(rows, 17, 15, ['nn', 'ss']);          // hand mid-chest
+  rows = stamp(rows, 17, 13, ['rr', 'rr']);          // cup above it
+  return rows;
+})();
+const teaSip = (() => {
+  let rows = stamp(standing, 19, 21, ['nn', 'nn']);
+  rows = stamp(rows, 16, 12, ['nss']);               // hand at the beard
+  rows = stamp(rows, 16, 10, ['.rr', '.rr']);        // cup at the mouth
+  return rows;
+})();
 
 // --- animations -------------------------------------------------------------
 // `next`      animation to settle into once a one-shot finishes; null loops.
@@ -365,6 +432,53 @@ const ANIMATIONS = {
     frames: [
       { rows: sitting, hold: 4 },
       { rows: breathe(standing), hold: 4 },
+    ],
+  },
+
+  // A slow look around the room. Noticing.
+  glance: {
+    next: null,
+    shades: 'down',
+    frames: [
+      { rows: standing, hold: 12 },
+      { rows: glanceL, hold: 24 },
+      { rows: standing, hold: 10 },
+      { rows: glanceR, hold: 24 },
+    ],
+  },
+
+  // Lifts the shades a pixel, eyes shut, settles them back. A micro-gesture.
+  adjust: {
+    next: 'idle',
+    shades: 'down',
+    frames: [
+      { rows: standing, hold: 6 },
+      { rows: adjustFrame, hold: 14 },
+      { rows: standing, hold: 6 },
+    ],
+  },
+
+  // Arms overhead, long hold. The stretch is the hold.
+  stretch: {
+    next: 'idle',
+    shades: 'down',
+    frames: [
+      { rows: stretchMid, hold: 6 },
+      { rows: stretchUp, hold: 42 },
+      { rows: stretchMid, hold: 6 },
+    ],
+  },
+
+  // Tea. Raised, sipped slowly, lowered. Very him.
+  tea: {
+    next: 'idle',
+    shades: 'down',
+    frames: [
+      { rows: teaHold, hold: 12 },
+      { rows: teaRaise, hold: 8 },
+      { rows: teaSip, hold: 36 },
+      { rows: teaRaise, hold: 8 },
+      { rows: teaHold, hold: 8 },
     ],
   },
 

@@ -186,6 +186,98 @@
         }
       ]
     },
+    "glance": {
+      "next": null,
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "glance-0.png",
+          "hold": 12
+        },
+        {
+          "file": "glance-1.png",
+          "hold": 24
+        },
+        {
+          "file": "glance-2.png",
+          "hold": 10
+        },
+        {
+          "file": "glance-3.png",
+          "hold": 24
+        }
+      ]
+    },
+    "adjust": {
+      "next": "idle",
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "adjust-0.png",
+          "hold": 6
+        },
+        {
+          "file": "adjust-1.png",
+          "hold": 14
+        },
+        {
+          "file": "adjust-2.png",
+          "hold": 6
+        }
+      ]
+    },
+    "stretch": {
+      "next": "idle",
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "stretch-0.png",
+          "hold": 6
+        },
+        {
+          "file": "stretch-1.png",
+          "hold": 42
+        },
+        {
+          "file": "stretch-2.png",
+          "hold": 6
+        }
+      ]
+    },
+    "tea": {
+      "next": "idle",
+      "shades": "down",
+      "transition": false,
+      "from": "down",
+      "frames": [
+        {
+          "file": "tea-0.png",
+          "hold": 12
+        },
+        {
+          "file": "tea-1.png",
+          "hold": 8
+        },
+        {
+          "file": "tea-2.png",
+          "hold": 36
+        },
+        {
+          "file": "tea-3.png",
+          "hold": 8
+        },
+        {
+          "file": "tea-4.png",
+          "hold": 8
+        }
+      ]
+    },
     "look": {
       "next": null,
       "shades": "up",

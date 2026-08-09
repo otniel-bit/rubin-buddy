@@ -564,6 +564,7 @@ final class Buddy: NSObject, NSMenuDelegate {
     // ends is always right; a real state event cancels the return outright.
     private var fidgetUntil: Date?
     private var nextFidgetAt = Date.distantFuture
+    private var lastFidget = ""
 
     /// Seconds you've spent actively at the machine since your last real break.
     private var activeSeconds: TimeInterval = 0
@@ -628,8 +629,13 @@ final class Buddy: NSObject, NSMenuDelegate {
     /// Quiet time between idle fidgets, and how long one runs. Between turns he
     /// used to be a two-frame bob for minutes on end — most of what anyone ever
     /// saw of him. Now idleness has a life of its own.
-    static var fidgetEvery: ClosedRange<Double> = 25...75
+    static var fidgetEvery: ClosedRange<Double> = 20...55
     static var fidgetLength: ClosedRange<Double> = 3.5...7
+    /// The re-arm used when he COMES TO REST (nod/idle event). The general
+    /// re-arm on every event meant active sessions starved fidgets completely —
+    /// events landed faster than the 25-75s timer could ever expire. Coming to
+    /// rest is different from being interrupted: a gesture should arrive soon.
+    static var fidgetAfterRest: ClosedRange<Double> = 8...25
     /// Break nudge: after this long actively at the machine — keyboard or mouse
     /// input within the last minute, YOUR presence, not Claude's activity — he
     /// suggests going to live a little.
@@ -984,13 +990,20 @@ final class Buddy: NSObject, NSMenuDelegate {
                 // Only reel him back in if he's still doing the fidget. If a
                 // breath, a Pose pick, or anything else took over meanwhile,
                 // this timer has no business standing him back up.
-                if ["stroke", "think", "glasses", "look"].contains(currentAnimation) {
+                if ["stroke", "think", "glasses", "look", "glance", "adjust", "stretch", "tea"]
+                    .contains(currentAnimation)
+                {
                     request("idle")
                 }
                 scheduleNextFidget()
             }
         } else if currentAnimation == "idle", Date() >= nextFidgetAt {
-            if let gesture = ["stroke", "think", "glasses"].randomElement() {
+            // Never the same gesture twice running — uniform draws clump, and
+            // clumping is what reads as "he only ever does one thing."
+            let pool = ["stroke", "think", "glasses", "glance", "adjust", "stretch", "tea"]
+                .filter { $0 != lastFidget }
+            if let gesture = pool.randomElement() {
+                lastFidget = gesture
                 fidgetUntil = Date().addingTimeInterval(.random(in: Self.fidgetLength))
                 request(gesture)
             }
@@ -1081,10 +1094,15 @@ final class Buddy: NSObject, NSMenuDelegate {
         if now.timeIntervalSince(lastStateEvent) > Self.ctxGap { activeSince = now }
         lastStateEvent = now
 
-        // Real activity trumps fidgeting: cancel any gesture in flight and push
-        // the next one out, so fidgets only happen after genuine quiet.
+        // Real activity trumps fidgeting: cancel any gesture in flight. But the
+        // re-arm depends on what the event MEANS — work coming in pushes the
+        // next gesture out; coming to rest invites one soon.
         fidgetUntil = nil
-        scheduleNextFidget()
+        if name == "nod" || name == "idle" {
+            nextFidgetAt = now.addingTimeInterval(.random(in: Self.fidgetAfterRest))
+        } else {
+            scheduleNextFidget()
+        }
         // And it trumps a guided breath — the incoming state change re-poses him.
         cancelBreath(standUp: false)
 
@@ -1769,6 +1787,7 @@ if env["RUBIN_CTX_FAST"] == "1" {
     Buddy.ctxGap = 20
     Buddy.fidgetEvery = 5...9
     Buddy.fidgetLength = 3...5
+    Buddy.fidgetAfterRest = 2...4
     Buddy.breakEvery = 30
     Buddy.breakReset = 10
     Buddy.meditateAfter = 15
