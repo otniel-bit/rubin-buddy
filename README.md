@@ -66,6 +66,7 @@ The bald silhouette with the shades. Everything lives there:
 | **Bring Him Back** | Drops him bottom-right on the main screen, shades up. The "I've lost him" button. |
 | Size | Tiny · Small · Medium · Large |
 | Chatter | Silent · Quiet (5–15 min) · Normal (2.5–7 min) · Talkative (45 s–2 min) |
+| Quiet for an Hour | One click before a meeting; restores itself. Unlike Silent, it can't be forgotten. |
 | Pose | Play any animation directly |
 | Say Something | A line on demand |
 | Take a Breath | A guided minute — he sits, the bubble paces you |
@@ -125,7 +126,10 @@ Around 270 lines in `~/.rubin-buddy/lines.txt`, one per line, `#` for comments,
 grouped into two dozen themes (the file is the source of truth for the count). He re-reads the file every time he speaks, so **edits land
 live** — no rebuild, no restart.
 
-He deals them from a **shuffled deck** rather than picking independently, so every line plays before any repeats. Independent picking gives a first repeat after
+He deals them from a **shuffled deck** rather than picking independently, so
+every line plays before any repeats — and the deck **survives restarts**, so
+auto-updates don't re-deal it. Contextual lines remember the last ~50 things he
+said and avoid them. Independent picking gives a first repeat after
 roughly 20 draws — under two hours on the default timing — which
 would have wasted most of the deck.
 

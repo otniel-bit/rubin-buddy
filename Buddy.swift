@@ -547,9 +547,23 @@ final class Buddy: NSObject, NSMenuDelegate {
     private var lastStateStamp: Date?
     private var ticksSinceStatePoll = 0
     private var ticksUntilSpeaking = 0
-    /// Shuffled deck, so every line plays before any repeats.
+    /// Shuffled deck, so every line plays before any repeats. Persisted, and
+    /// that matters more than it looks: auto-updates restart him, and an
+    /// in-memory deck meant every release re-dealt from the top — with weekly
+    /// releases, nobody ever got deep enough into the deck to avoid repeats.
     private var lineBag: [String] = []
-    private var bagSource: [String] = []
+    private var bagSourceHash = ""
+    private var deckRestored = false
+    private static let deckKey = "buddyDeck"
+    private static let deckSourceKey = "buddyDeckSource"
+
+    /// The last ~50 lines he actually said, newest last. Contextual draws are
+    /// filtered against this — the theme pools are small (a dozen lines), and
+    /// drawing WITH replacement from them made same-day repeats near-certain.
+    private var recentLines: [String] =
+        UserDefaults.standard.stringArray(forKey: "buddyRecentLines") ?? []
+    private static let recentKey = "buddyRecentLines"
+    private static let recentCap = 50
 
     // Contextual speech: the moment picks the theme, the theme picks the line.
     private var lastContextual = Date.distantPast
@@ -590,6 +604,14 @@ final class Buddy: NSObject, NSMenuDelegate {
     /// The last thing he said, surfaced in the menu for anyone who caught the
     /// bubble vanishing and wondered.
     private var lastSaid = ""
+
+    /// Quiet for an Hour: every unprompted mouth stays shut until this passes.
+    /// Persisted, because an auto-update restarting him mid-meeting must not
+    /// un-mute him. Explicit asks (clicks, Say Something, the breath) still work.
+    private var quietUntil =
+        Date(timeIntervalSince1970: UserDefaults.standard.double(forKey: "buddyQuietUntil"))
+    private static let quietKey = "buddyQuietUntil"
+    private var inQuietHour: Bool { Date() < quietUntil }
 
     private let localVersion: String
     /// True when running from the installed location, where update.sh applies.
@@ -759,7 +781,7 @@ final class Buddy: NSObject, NSMenuDelegate {
         if !UserDefaults.standard.bool(forKey: firstRunKey) {
             UserDefaults.standard.set(true, forKey: firstRunKey)
             DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
-                guard let self, !self.isBreathing, !self.bubble.isVisible else { return }
+                guard let self, !self.isBreathing, !self.bubble.isVisible, !self.inQuietHour else { return }
                 self.speakLine()
             }
         }
@@ -961,7 +983,7 @@ final class Buddy: NSObject, NSMenuDelegate {
         if Buddy.quietSecondsRange != nil {
             ticksUntilSpeaking -= 1
             if ticksUntilSpeaking <= 0 {
-                if !bubble.isVisible && window.isVisible && !isBreathing { speakLine() }
+                if !bubble.isVisible && window.isVisible && !isBreathing && !inQuietHour { speakLine() }
                 scheduleNextLine()
             }
         }
@@ -1067,7 +1089,7 @@ final class Buddy: NSObject, NSMenuDelegate {
             let text = String(name.dropFirst(4))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .prefix(140)
-            guard !text.isEmpty, !isBreathing else { return }
+            guard !text.isEmpty, !isBreathing, !inQuietHour else { return }
             lastSaid = String(text)
             if Buddy.debug {
                 FileHandle.standardError.write("say: \(text)\n".data(using: .utf8)!)
@@ -1147,6 +1169,7 @@ final class Buddy: NSObject, NSMenuDelegate {
     /// in Silent mode, over another bubble, mid-breath, or while hidden.
     private func canSpeakIgnoringCooldown() -> Bool {
         Buddy.quietSecondsRange != nil && window.isVisible && !bubble.isVisible && !isBreathing
+            && !inQuietHour
     }
 
     // MARK: speech
@@ -1178,16 +1201,53 @@ final class Buddy: NSObject, NSMenuDelegate {
         return parsed.isEmpty ? Self.fallbackLines : parsed
     }
 
+    /// Stable across launches, unlike hashValue (which is seeded per-process).
+    /// FNV-1a; collisions would only mean a harmless extra reshuffle.
+    private static func stableHash(_ s: String) -> String {
+        var h: UInt64 = 0xcbf2_9ce4_8422_2325
+        for b in s.utf8 {
+            h ^= UInt64(b)
+            h = h &* 0x0000_0100_0000_01B3
+        }
+        return String(h, radix: 16)
+    }
+
+    private func noteSpoken(_ line: String) {
+        lastSaid = line
+        recentLines.append(line)
+        if recentLines.count > Self.recentCap {
+            recentLines.removeFirst(recentLines.count - Self.recentCap)
+        }
+        UserDefaults.standard.set(recentLines, forKey: Self.recentKey)
+    }
+
     /// Deals from a shuffled deck rather than picking independently, so all of
-    /// them play before any repeats. Reshuffles when lines.txt changes.
+    /// them play before any repeats — including across restarts. Reshuffles
+    /// when lines.txt changes.
     private func speakLine() {
         let all = lines()
-        if lineBag.isEmpty || all != bagSource {
-            bagSource = all
+        let hash = Self.stableHash(all.joined(separator: "\n"))
+        if !deckRestored {
+            deckRestored = true
+            if UserDefaults.standard.string(forKey: Self.deckSourceKey) == hash,
+                let saved = UserDefaults.standard.stringArray(forKey: Self.deckKey),
+                !saved.isEmpty
+            {
+                lineBag = saved
+                bagSourceHash = hash
+            }
+        }
+        if lineBag.isEmpty || hash != bagSourceHash {
+            bagSourceHash = hash
             lineBag = all.shuffled()
         }
         guard let line = lineBag.popLast() else { return }
-        lastSaid = line
+        UserDefaults.standard.set(lineBag, forKey: Self.deckKey)
+        UserDefaults.standard.set(hash, forKey: Self.deckSourceKey)
+        if Buddy.debug {
+            FileHandle.standardError.write("deck: \(lineBag.count) left\n".data(using: .utf8)!)
+        }
+        noteSpoken(line)
         bubble.show(line, over: window.frame, pixel: pixel, screen: window.screen)
     }
 
@@ -1339,6 +1399,7 @@ final class Buddy: NSObject, NSMenuDelegate {
     private func canSpeakContextual(_ now: Date) -> Bool {
         Buddy.quietSecondsRange != nil && window.isVisible && !bubble.isVisible
             && !isBreathing  // never interject between "Hold…" and "Out…"
+            && !inQuietHour
             && now.timeIntervalSince(lastContextual) >= Self.ctxCooldown
     }
 
@@ -1347,11 +1408,24 @@ final class Buddy: NSObject, NSMenuDelegate {
     private func speakContextual(_ groupNames: [String], at now: Date) {
         let groups = lineGroups()
         let pool = groupNames.flatMap { groups[$0] ?? [] }
-        guard let line = (pool.isEmpty ? lines() : pool).randomElement() else { return }
+        let full = pool.isEmpty ? lines() : pool
+        // Prefer lines he hasn't said lately. The pools are small, so when
+        // everything in one has been said recently, saying the least-recent
+        // beats going silent — but never the same-day déjà vu of pure chance.
+        let fresh = full.filter { !recentLines.contains($0) }
+        let line: String?
+        if !fresh.isEmpty {
+            line = fresh.randomElement()
+        } else {
+            line = full.min { a, b in
+                (recentLines.lastIndex(of: a) ?? -1) < (recentLines.lastIndex(of: b) ?? -1)
+            }
+        }
+        guard let line else { return }
         if Buddy.debug {
             FileHandle.standardError.write("ctx \(groupNames): \(line)\n".data(using: .utf8)!)
         }
-        lastSaid = line
+        noteSpoken(line)
         bubble.show(line, over: window.frame, pixel: pixel, screen: window.screen)
         lastContextual = now
         // He just spoke; push the random line back out so they don't stack.
@@ -1537,6 +1611,13 @@ final class Buddy: NSObject, NSMenuDelegate {
         chatterItem.submenu = chatterMenu
         menu.addItem(chatterItem)
 
+        if inQuietHour {
+            let left = max(1, Int(quietUntil.timeIntervalSinceNow / 60) + 1)
+            menu.addItem(item("End Quiet (\(left)m left)", #selector(toggleQuietHour), on: true))
+        } else {
+            menu.addItem(item("Quiet for an Hour", #selector(toggleQuietHour)))
+        }
+
         let poseMenu = NSMenu()
         for name in sprites.animations.keys.sorted() {
             let entry = item(
@@ -1631,6 +1712,14 @@ final class Buddy: NSObject, NSMenuDelegate {
     @objc private func setSize(_ sender: NSMenuItem) {
         guard Self.sizeChoices.indices.contains(sender.tag) else { return }
         applyScale(Self.sizeChoices[sender.tag].1)
+    }
+
+    /// One click before a call; restores itself. The failure mode of Silent
+    /// was forgetting to turn him back on — this can't be forgotten.
+    @objc private func toggleQuietHour() {
+        quietUntil = inQuietHour ? .distantPast : Date().addingTimeInterval(60 * 60)
+        UserDefaults.standard.set(quietUntil.timeIntervalSince1970, forKey: Self.quietKey)
+        bubble.hide()
     }
 
     @objc private func setChatter(_ sender: NSMenuItem) {
